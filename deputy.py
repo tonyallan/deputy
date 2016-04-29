@@ -33,7 +33,11 @@ class Deputy(object):
         At least for Resource calls, api_resp is a list of results.
         """
         url = urllib.parse.urlparse(urllib.parse.urljoin(self.config.endpoint, api))
-        conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=self.config.timeout)
+        try:
+            conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=self.config.timeout)
+        except:
+            print ('Error. Invalid URL: {0}'.format(self.config.endpoint))
+            sys.exit(1)
 
         body = json.dumps(data)
         headers = {
@@ -49,10 +53,17 @@ class Deputy(object):
         except KeyboardInterrupt:
             print('\nCtrl-C - User requested exit.')
             exit(2)
-
+        except socket.timeout:
+            print('Error. Socket timeout for API {0}'.format(api))
+            exit(2)
+        except socket.error as e:
+            # This exception is raised for socket-related errors.
+            print('Error. Socket error ({0}) for API {1}.'.format(e.errno, api))
+            exit(2)
         #print(resp.status, resp.reason, dict(resp.getheaders()), resp.read())
-        self.last_response = resp
-
+        if resp.status == 302:
+            print('Error. Unexpected API {0} response {1} {2} using API URL {3}.'.format(api, resp.status, resp.reason, url.geturl()))
+            exit(1)
         if resp.status != 200:
             print('Error. API {0} failed with {1} {2}.'.format(api, resp.status, resp.reason))
             exit(1)
@@ -327,9 +338,13 @@ def parse_csv(row, include_mobile):
                 mobile = '{0} {1} {2}'.format(mobile[0:4],mobile[4:7], mobile[7:10])
 
     # fix email address
-    if email_test not in email:
-        print('Incorrect {0} email address {1} ({2}): {3}. Fixing.'.format(email_test, name, student_id, email))
-        email = '{0}@{1}'.format(student_id, email_domain)
+    if email_test is not None:
+        if email_test not in email:
+            print('Incorrect {0} email address {1} ({2}): {3}. Fixing.'.format(email_test, name, student_id, email))
+            if email_domain is not None:
+                email = '{0}@{1}'.format(student_id, email_domain)
+            else:
+                email = None
 
     new_row = {
         'first_name':       first_name,
@@ -397,53 +412,60 @@ def add_years_to_student_records(years, import_csv):
 
     print('Processed {0} students.'.format(count))
 
+def get_config(config, section, item, missing=None):
+    if section in config.sections():
+        if item in config[section]:
+            return config[section][item]
+    return missing
 
 # --------------------------------------------------------------------------------
 if __name__ == '__main__':
     config_file = 'deputy.config'
     config = configparser.ConfigParser()
     config.read(os.path.expanduser(config_file))
-    api_endpoint   = config['DEPUTY']['api_endpoint']
-    access_token   = config['DEPUTY']['access_token']
-    import_csv     = config['IMPORT']['import_csv']
-    deputy_csv     = config['IMPORT']['deputy_csv']
-    email_test     = config['IMPORT']['email_test']
-    email_domain   = config['IMPORT']['email_domain']
+
+    api_endpoint   = get_config(config, 'DEPUTY', 'api_endpoint')
+    access_token   = get_config(config, 'DEPUTY', 'access_token')
+    import_csv     = get_config(config, 'IMPORT', 'import_csv', missing='import.csv')
+    deputy_csv     = get_config(config, 'IMPORT', 'deputy_csv', missing='deputy.csv')
+    email_test     = get_config(config, 'IMPORT', 'email_test')
+    email_domain   = get_config(config, 'IMPORT', 'email_domain')
+
+    if api_endpoint is None:
+        print('Error. Missing configuration item api_endpoint.')
+        sys.exit(1)
+    if access_token is None:
+        print('Error. Missing configuration item access_token.')
+        sys.exit(1)
 
     # students who don't have to do any bursarys
     exclude = []
-    for u in config['IMPORT']['exclude'].split(','):
-        exclude.append(u.strip())
+    if get_config(config, 'IMPORT', 'exclude') is not None:
+        for u in get_config(config, 'IMPORT', 'exclude').split(','):
+            exclude.append(u.strip())
 
     # post grads don't have to do it either, so exclude student if these strings are in their cource name
     exclude_postgrad = []
-    for u in config['IMPORT']['postgrad'].split(','):
-        exclude_postgrad.append(u.strip())
+    if get_config(config, 'IMPORT', 'postgrad') is not None:
+        for u in get_config(config, 'IMPORT', 'postgrad').split(','):
+            exclude_postgrad.append(u.strip())
     
 
     parser = argparse.ArgumentParser(
         description='Deputy Utilities',
         )
-    parser.add_argument('-e', '--endpoint', help='API endpoint',        default=api_endpoint)
-    parser.add_argument('-a', '--token',    help='Access Token',        default=access_token)
-    parser.add_argument('--import_csv',     help='Import CSV',          default=import_csv)
-    parser.add_argument('--deputy_csv',     help='Deputy CSV (output)', default=deputy_csv)
-    #parser.add_argument('-d', '--debug', help='debug level', default=0, type=int)
-    parser.add_argument('-t', '--timeout',  help='HTTP timeout',        default=20, type=int)
-    #parser.add_argument('-l', '--sleep', help='sleep before status (seconds)', default=2, type=int)
+    parser.add_argument('-e', '--endpoint', help='API endpoint',          default=api_endpoint)
+    parser.add_argument('-a', '--token',    help='Access Token',          default=access_token)
+    parser.add_argument('--import_csv',     help='Import CSV',            default=import_csv)
+    parser.add_argument('--deputy_csv',     help='Deputy CSV (output)',   default=deputy_csv)
+    parser.add_argument('-t', '--timeout',  help='HTTP timeout',          default=20, type=int)
     parser.add_argument('-c', '--command',  help='command (e.g. status)', default='intro',
         choices=['list', 'report', 'journal', 'deputy-csv', 'add-year', 'view-api', 
         'test', 'config'])
-    parser.add_argument('--api',            help='View API Response',   default='me')
+    parser.add_argument('--api',            help='View API Response',     default='me')
     parser.add_argument('--mobile',         help='Incode Mobile in the Deputy CSV file', action='store_true')
     parser.add_argument('--csv',            help='Format output as CSV', action='store_true')
     parser.add_argument('--hide_ok',        help='In report, hide if no problems.', action='store_true')
-    #parser.add_argument('--duration', help='duration (seconds)', default=3600+1800, type=int)
-    #parser.add_argument('--profile', help='profile name', default=None)
-    #parser.add_argument('--description', help='description', default='capture-device.py')
-    #parser.add_argument('--count', help='execute command multiple times', default=1, type=int)
-    #parser.add_argument('--url', help='URL for ping and traceroute', default=None)
-    #parser.add_argument('--xml', help='Print the raw XML', action='store_true')
     args = parser.parse_args()
 
     p = Printx(csv=args.csv)
@@ -533,10 +555,13 @@ if __name__ == '__main__':
     elif args.command == 'report':
         p.text('Student compliance report.\n')
         # Fetch student and config data
-        shift_obligations = {
-            'Year1': config['REPORT']['shifts_year1'],
-            'Year2': config['REPORT']['shifts_year2'],
-            'Year3': config['REPORT']['shifts_year3']}
+        if get_config(config, 'REPORT', 'shifts_year1') is None:
+            shift_obligations = None
+        else:
+            shift_obligations = {
+                'Year1': get_config(config, 'REPORT', 'shifts_year1'),
+                'Year2': get_config(config, 'REPORT', 'shifts_year2'),
+                'Year3': get_config(config, 'REPORT', 'shifts_year3')}            
         student_list = deputy.get_employees()
         student_years = deputy.get_student_years()
         # setup our 'students' hash that will hold their roster data.
@@ -552,26 +577,30 @@ if __name__ == '__main__':
                 students[employee_id] = {
                     'name': name,
                     'year': year,
-                    'obligation': int(shift_obligations[year]),
                     'rostered': 0,
                     'completed': 0,
                     'open': 0,
                     'timesheet': 0
                 }
+                if shift_obligations is not None:
+                    students[employee_id]['obligation'] = int(shift_obligations[year])
                 bursary_student_count += 1
                 year_count[year] += 1
             else:
                 non_bursary_student_count += 1
-        # itterate through their timesheets and counting if TimeApproved=True and IsLeave=False
-        timesheets = deputy.get_resources('Timesheet')
+
         # ignore Swat Vac Bursary's
         operational_units = deputy.get_resources_by_id('OperationalUnit')
         # In the UI it's called the Location Name.
-        company_name = config['REPORT']['location_name']
+        location_name = get_config(config, 'REPORT', 'location_name')
+
+        # itterate through their timesheets and counting if TimeApproved=True and IsLeave=False
+        timesheets = deputy.get_resources('Timesheet')
         for timesheet in timesheets:
-            # Ignore if not a regular bursary shift (e.g. not Swat Vac)
-            if operational_units[timesheet['OperationalUnit']]['CompanyName'] != company_name:
-                continue
+            # ignore if there is no location or it's not a match
+            if location_name is not None:
+                if operational_units[timesheet['OperationalUnit']]['CompanyName'] != location_name:
+                    continue
             # make sure someone approved then
             if not timesheet['TimeApproved']:
                 continue
@@ -581,18 +610,17 @@ if __name__ == '__main__':
             employee_id = timesheet['Employee']
             if employee_id in students:     # ignore test data or shifts by non Year1/2/3 students
                 students[employee_id]['timesheet'] += 1
+
         # itterate through their rosters, counting rostered and completed shifts
         rosters = deputy.get_resources('Roster')
-        # ignore Swat Vac Bursary's
-        operational_units = deputy.get_resources_by_id('OperationalUnit')
-        company_name = config['REPORT']['company_name']
         rostered_count = 0
         completed_count = 0
         open_count = 0
         for roster in rosters:
-            # Ignore if not a regular bursary shift (e.g. not Swat Vac)
-            if operational_units[roster['OperationalUnit']]['CompanyName'] != company_name:
-                continue
+            # ignore if there is no location or it's not a match
+            if location_name is not None:
+                if operational_units[roster['OperationalUnit']]['CompanyName'] != location_name:
+                    continue
             # Count but don't ignore open shifts
             if roster['Open']:
                 open_count += 1
@@ -608,36 +636,46 @@ if __name__ == '__main__':
                     students[employee_id]['open'] += 1
         # write out the sorted list of results with a percentage complete
         # loop using student_list because it is sorted and therefore the report will be sorted.
-        p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
-            '% Rostered', '% Completed', 'Timesheets', 'Issues')
+            if shift_obligations is None:
+                p.headers('Name', 'Rostered', 'Open', 'Completed', 
+                    'Timesheets', 'Issues')
+            else:
+                p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
+                    '% Rostered', '% Completed', 'Timesheets', 'Issues')
         hidden = 0
         for s in student_list: 
             issues = ''
             employee_id = s['employee_id']
             if employee_id in students:
                 student = students[employee_id]
-                percentage_rostered = '{0:.0f}%'.format(((0.0+student['rostered'])/student['obligation'])*100.0)
-                if (0.0+student['rostered'])/student['obligation'] < 1:
-                    issues = 'Incomplete roster.'
-                percentage_complete = '{0:.0f}%'.format(((0.0+student['completed'])/student['obligation'])*100.0)
-                # option to hide record where completed = 100%
-                show = True
-                if args.hide_ok:
-                    if (0.0+student['completed'])/student['obligation'] >= 1:
-                        show = False
-                        hidden += 1
-                if show:
-                    p.data('{0} ({1}): {2}, {3}, {4} {5} {6} {7} {8}', 
-                        student['name'], student['year'], student['obligation'], 
-                        student['rostered'], student['open'], student['completed'], percentage_rostered, 
-                        percentage_complete, student['timesheet'], issues)
+                if shift_obligations is None:
+                    p.data('{0} / R:{1}  O:{2} C:{3} T:{4} / {5}', 
+                        student['name'], student['rostered'], student['open'], 
+                        student['completed'], student['timesheet'], issues)
+                else:
+                    percentage_rostered = '{0:.0f}%'.format(((0.0+student['rostered'])/student['obligation'])*100.0)
+                    if (0.0+student['rostered'])/student['obligation'] < 1:
+                        issues = 'Incomplete roster.'
+                    percentage_complete = '{0:.0f}%'.format(((0.0+student['completed'])/student['obligation'])*100.0)
+                    # option to hide record where completed = 100%
+                    show = True
+                    if args.hide_ok:
+                        if (0.0+student['completed'])/student['obligation'] >= 1:
+                            show = False
+                            hidden += 1
+                    if show:
+                        p.data('{0} ({1}): {2}, {3}, {4} {5} {6} {7} {8} {9}', 
+                            student['name'], student['year'], student['obligation'], 
+                            student['rostered'], student['open'], student['completed'], percentage_rostered, 
+                            percentage_complete, student['timesheet'], issues)
         # and some summary info
         # active is Status=Employed
         p.text('\nListed {0} Bursary Students out of {1} active Deputy users. Excluded {2} non-bursary users.', 
             bursary_student_count, len(student_list), non_bursary_student_count)
-        p.text('Students in Year1: {0}; Year2: {1}; Year3: {2}; Total: {3}', 
-            year_count['Year1'], year_count['Year2'], year_count['Year3'], 
-            year_count['Year1']+year_count['Year2']+year_count['Year3'])
+        if shift_obligations is not None:
+            p.text('Students in Year1: {0}; Year2: {1}; Year3: {2}; Total: {3}', 
+                year_count['Year1'], year_count['Year2'], year_count['Year3'], 
+                year_count['Year1']+year_count['Year2']+year_count['Year3'])
         p.text('Rosters {0}, rostered {1}, completed {2}, open {3}.', 
             len(rosters), rostered_count, completed_count, open_count)
         if args.hide_ok:
