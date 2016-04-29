@@ -634,14 +634,18 @@ if __name__ == '__main__':
                     completed_count += 1
                 if roster['Open']:
                     students[employee_id]['open'] += 1
+
+        # headers
+        if shift_obligations is None:
+            p.headers('Name', 'Rostered', 'Open', 'Completed', 
+                'Timesheets', 'Issues')
+        else:
+            print('xxx', file=sys.stderr)
+            p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
+                '% Rostered', '% Completed', 'Timesheets', 'Issues')
+
         # write out the sorted list of results with a percentage complete
         # loop using student_list because it is sorted and therefore the report will be sorted.
-            if shift_obligations is None:
-                p.headers('Name', 'Rostered', 'Open', 'Completed', 
-                    'Timesheets', 'Issues')
-            else:
-                p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
-                    '% Rostered', '% Completed', 'Timesheets', 'Issues')
         hidden = 0
         for s in student_list: 
             issues = ''
@@ -681,38 +685,11 @@ if __name__ == '__main__':
         if args.hide_ok:
             p.text('{0} 100% completed records hidden.', hidden)
 
-    #elif args.command == 'dlist':
-    #    print('\nEmployee list:')
-    #    employees = deputy.get_employees()
-    #
-    #    print('\nEmployee email:')
-    #    for employee_id in employees:
-    #        contact_id = employees[employee_id]['contact']
-    #        employee_name = employees[employee_id]['employee_name']
-    #        api_resp = deputy.api('resource/Contact/{0}'.format(contact_id))
-    #        #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-    #        contact_email = api_resp['Email']
-    #        print('Employee {0} / Contact {1}  -- {2} / {3}'.format(employee_id, contact_id, employee_name, contact_email))
-
     elif args.command == 'view-api':
         # e.g. python3 deputy.py --command view-api --api resource/EmployeeRole
         api_resp = deputy.api(args.api)
         print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
         print('{0} Records returned.'.format(len(api_resp)))
-
-    # fails with 401. Not somethings that can be added to.
-    #elif args.command == 'maint-add-penalty':
-    #    data = {
-    #       'Category': 'Penalty',
-    #       'Group': 'Issue',
-    #       'Stafflog': True,
-    #       'System': False,
-    #       'SortOrder': 1
-    #    }
-    #    api_resp = deputy.api('/resource/Category', method='PUT', data=data)
-    #    resp = deputy.last_response
-    #    print(resp.status, resp.reason, dict(resp.getheaders()), resp.read())
-    #    print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
 
     elif args.command == 'test':
         pass
