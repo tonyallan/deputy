@@ -640,7 +640,6 @@ if __name__ == '__main__':
             p.headers('Name', 'Rostered', 'Open', 'Completed', 
                 'Timesheets', 'Issues')
         else:
-            print('xxx', file=sys.stderr)
             p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
                 '% Rostered', '% Completed', 'Timesheets', 'Issues')
 
