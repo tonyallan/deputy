@@ -1,5 +1,5 @@
 # deputy
-Reporting and Utility script using the deputy.com API
+Reporting and Utility script using the deputy.com [API](https://api-doc.deputy.com/API/Getting_Started).
 
 ## Setup
 
