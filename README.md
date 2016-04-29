@@ -1,5 +1,11 @@
-# deputy
-Reporting and Utility script using the deputy.com [API](https://api-doc.deputy.com/API/Getting_Started).
+# [Deputy](https://www.deputy.com/features)
+Reporting and Utility script using the [deputy.com](https://www.deputy.com) [API](https://api-doc.deputy.com/API/Getting_Started).
+
+## Introduction
+
+This script is used by an educational institution where around 250 residental students are required to work in the kitchen on 'Bursary' shifts. The functionality is focussed on the need to manage and report on these students.
+
+The `deputy.py` Python script contains examples on how to invoke the API's.
 
 ## Setup
 
