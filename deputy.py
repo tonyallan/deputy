@@ -460,7 +460,7 @@ if __name__ == '__main__':
     parser.add_argument('--deputy_csv',     help='Deputy CSV (output)',   default=deputy_csv)
     parser.add_argument('-t', '--timeout',  help='HTTP timeout',          default=20, type=int)
     parser.add_argument('command',          help='command (e.g. status)', default='intro', nargs='?',
-        choices=['list', 'report', 'journal', 'deputy-csv', 'add-year', 'view-api', 'test', 'config'])
+        choices=['intro', 'config', 'list', 'report', 'journal', 'deputy-csv', 'add-year', 'view-api', 'test'])
     parser.add_argument('--api',            help='View API Response',     default='me')
     parser.add_argument('--mobile',         help='Incode Mobile in the Deputy CSV file', action='store_true')
     parser.add_argument('--csv',            help='Format output as CSV', action='store_true')
