@@ -657,8 +657,10 @@ if __name__ == '__main__':
                 else:
                     percentage_rostered = '{0:.0f}%'.format(((0.0+student['rostered'])/student['obligation'])*100.0)
                     if (0.0+student['rostered'])/student['obligation'] < 1:
-                        issues = 'Incomplete roster.'
+                        issues = 'Incomplete roster. '
                     percentage_complete = '{0:.0f}%'.format(((0.0+student['completed'])/student['obligation'])*100.0)
+                    if (0.0+student['completed'])/student['obligation'] < 1:
+                        issues += 'Outstanding Shifts.'
                     # option to hide record where completed = 100%
                     show = True
                     if args.hide_ok:
