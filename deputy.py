@@ -476,7 +476,7 @@ if __name__ == '__main__':
         print('\nA script to invoke the Deputy API''s. Use --help to see a list of commands.')
 
     elif args.command == 'config':
-        print('Using config file ({0})'.format(config_file))
+        print('Using config file ({0})'.format(os.path.abspath(config_file)))
         for section in config.sections():
             print('\n' + section)
             for item in config[section]:
