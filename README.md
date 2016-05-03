@@ -33,8 +33,8 @@ Copy the value to `access_token`.
 |-------|-------|-------|
 |`intro` (and default command)|Helpful documentation, i.e. directs users to this page!||
 |`config`|List the contents of the configuration file (usually just a test to see if the config file can be read)||
-|`list`|Show all users Name, Year and Email. Year will be blank if Training doesn't contain Year1, Year2 or Year3.|`--csv` output CSV to stdout|
-|`report`|List users, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
+|`list`|For all Active employee's, show alphabetically: Name, Year and Email. Year will be blank if Training doesn't contain Year1, Year2 or Year3.|`--csv` output CSV to stdout|
+|`report`|List users alphabetically, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
 |`journal`|List all journal entries.|`--csv` output CSV to stdout|
 |`deputy-csv`|Read from `import_csv` and write to `deputy.csv` (in the correct format to allow bulk People creation.||
 |`add-year`|Extract the year level from `import_csv`||
@@ -52,10 +52,21 @@ The first line shows the version and account asscoaietd with the provided creden
 DeputyVersion: 3.0.1 running as Service Account For API.
 ```
 
-Other exaplmes.
+On a Mac, list employee's and show the CSV results in your default spreadsheet program:
+```
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - list --csv > /tmp/z.csv && open /tmp/z.csv
+```
+
+Other examples.
 
 ```
 curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api resource/Employee 
 ```
 
+```
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api me
+```
 
+```
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api resource/Employee
+```
