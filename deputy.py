@@ -138,8 +138,8 @@ class Deputy(object):
         # TODO: change to api_resp = self.get_resources('Employee')
         #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
         for employee in api_resp:
-            Active = employee['Active']
-            if Active is not True:
+            active = employee['Active']
+            if active is not True:
                 continue
             sort = '{0}:{1}:{2}'.format(employee['LastName'].lower(), employee['FirstName'].lower(), employee['Id'])
             #role_id  = employee['Role']
@@ -518,9 +518,12 @@ if __name__ == '__main__':
     elif args.command == 'list':
         p.text('List of Bursary Students and their year level and email.\n')
         p.headers('Name', 'Year', 'Email')
+        p.text('Fetching employees...')
         students = deputy.get_employees()
         #student_roles = deputy.get_employee_roles()
+        p.text('Fetching training records (for year)...')
         student_years = deputy.get_student_years()
+        p.text('Fetching contact details...')
         contacts = deputy.get_resources_by_id('Contact')
         bursary_student_count = 0
         for student in students:
@@ -538,8 +541,11 @@ if __name__ == '__main__':
     elif args.command == 'journal':
         p.text('Journal Entries.\n')
         p.headers('Date', 'Name', 'Email', 'Category', 'Comment', 'Creator')
+        p.text('Fetching employees...')
         students = deputy.get_resources_by_id('Employee')
+        p.text('Fetching journals...')
         journals = deputy.get_resources('Journal')
+        p.text('Fetching contacts...')
         contacts = deputy.get_resources_by_id('Contact')
         for journal in journals:
             employee_id = journal['EmployeeId']
@@ -564,8 +570,10 @@ if __name__ == '__main__':
             shift_obligations = {
                 'Year1': get_config(config, 'REPORT', 'shifts_year1'),
                 'Year2': get_config(config, 'REPORT', 'shifts_year2'),
-                'Year3': get_config(config, 'REPORT', 'shifts_year3')}            
+                'Year3': get_config(config, 'REPORT', 'shifts_year3')}  
+        p.text('Fetching employees...')          
         student_list = deputy.get_employees()
+        p.text('Fetching training records (for year)...')
         student_years = deputy.get_student_years()
         # setup our 'students' hash that will hold their roster data.
         bursary_student_count = 0
@@ -593,11 +601,13 @@ if __name__ == '__main__':
                 non_bursary_student_count += 1
 
         # ignore Swat Vac Bursary's
+        p.text('Fetching operational units (for locations)...')
         operational_units = deputy.get_resources_by_id('OperationalUnit')
         # In the UI it's called the Location Name.
         location_name = get_config(config, 'REPORT', 'location_name')
 
         # itterate through their timesheets and counting if TimeApproved=True and IsLeave=False
+        p.text('Fetching timesheets...')
         timesheets = deputy.get_resources('Timesheet')
         for timesheet in timesheets:
             # ignore if there is no location or it's not a match
@@ -615,6 +625,7 @@ if __name__ == '__main__':
                 students[employee_id]['timesheet'] += 1
 
         # itterate through their rosters, counting rostered and completed shifts
+        p.text('Fetching rosters...')
         rosters = deputy.get_resources('Roster')
         rostered_count = 0
         completed_count = 0
@@ -691,12 +702,14 @@ if __name__ == '__main__':
 
     elif args.command == 'view-api':
         # e.g. python3 deputy.py --command view-api --api resource/EmployeeRole
+        p.text('Fetching api...{0}', args.api)
         api_resp = deputy.api(args.api)
-        print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-        print('{0} Records returned.'.format(len(api_resp)))
+        p.text(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+        p.text('{0} Records returned.'.format(len(api_resp)))
 
     elif args.command == 'test':
         pass
+        p.text('Fetching rosters...')
         rosters = deputy.get_resources('Roster')
         for r in rosters:
             # "StartTimeLocalized": "2016-03-16T13:30:00+11:00",
