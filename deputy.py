@@ -462,7 +462,7 @@ if __name__ == '__main__':
     parser.add_argument('command',          help='command (e.g. status)', default='intro', nargs='?',
         choices=['intro', 'config', 'list', 'report', 'journal', 'deputy-csv', 'add-year', 'view-api', 'test'])
     parser.add_argument('--api',            help='View API Response',     default='me')
-    parser.add_argument('--mobile',         help='Incode Mobile in the Deputy CSV file', action='store_true')
+    parser.add_argument('--mobile',         help='Include Mobile phone number in the Deputy CSV file', action='store_true')
     parser.add_argument('--csv',            help='Format output as CSV', action='store_true')
     parser.add_argument('--hide_ok',        help='In report, hide if no problems.', action='store_true')
     args = parser.parse_args()
@@ -474,6 +474,7 @@ if __name__ == '__main__':
 
     if args.command == 'intro':
         print('\nA script to invoke the Deputy API''s. Use --help to see a list of commands.')
+        print('For more information, see https://github.com/tonyallan/deputy/')
 
     elif args.command == 'config':
         print('Using config file ({0})'.format(os.path.abspath(config_file)))
@@ -524,7 +525,10 @@ if __name__ == '__main__':
         bursary_student_count = 0
         for student in students:
             name = student['employee_name']
-            year = student_years[student['employee_id']]
+            if student['employee_id'] in student_years:
+                year = student_years[student['employee_id']]
+            else:
+                year = ''
             email_address = contacts[student['contact_id']]['Email']
             if year is not None:
                 p.data('{0} ({1}, {2})', name, year, email_address)
@@ -742,3 +746,5 @@ if __name__ == '__main__':
         #resp = deputy.last_response
         #print(resp.status, resp.reason, dict(resp.getheaders()), resp.read())
         #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+
+    sys.exit(0)
