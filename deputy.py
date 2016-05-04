@@ -169,7 +169,7 @@ class Deputy(object):
 
     def get_years(self):
         """
-        This is a college specific method.
+        This is a college specific method to fetch the training module id labels.
         Returns something like:
         {   "Year1": 4,
             "Year2": 6,
@@ -298,11 +298,13 @@ def parse_csv(row, include_mobile):
         print('Excluded {0} ({1}) who is on the exclude list. '.format(name, student_id, course))
         return None
 
-    # create Year1/2/3
+    # exclude postgrads
     for e in exclude_postgrad:
         if e in course:
             print('Excluded {0} ({1}) for Post Grad course {2}.'.format(name, student_id, course))
             return None
+
+    # year 1,2,3 assignment        
     try:
         if int(year_at_uni) > 3:
             print('Excluded {0} ({1}), Year at Uni {2} > 3 in course {3}.'.format(name, student_id, year_at_uni, course))
@@ -401,6 +403,7 @@ def add_years_to_student_records(years, import_csv):
         print('Student {0} ({1}) is in {2}'.format(name, employee_id, year))
 
         # Add training module Years1/2/3 for each student
+        # TODO FIX the date...
         data = {
            'Employee': employee_id,
            'Module': training_module,
@@ -704,8 +707,8 @@ if __name__ == '__main__':
         # e.g. python3 deputy.py --command view-api --api resource/EmployeeRole
         p.text('Fetching api...{0}', args.api)
         api_resp = deputy.api(args.api)
-        p.text(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-        p.text('{0} Records returned.'.format(len(api_resp)))
+        print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+        print('{0} Records returned.'.format(len(api_resp)))
 
     elif args.command == 'test':
         pass
