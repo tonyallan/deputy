@@ -64,6 +64,10 @@ Other examples.
 curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - resource 
 ```
 
+```
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - api --api resource/Employee/1 
+```
+
 Call an API. Maximum of 500 results returned.
 ```
 curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - api --api resource/Roster
