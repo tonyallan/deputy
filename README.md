@@ -53,29 +53,29 @@ The first line shows the version and account asscoaietd with the provided creden
 DeputyVersion: 3.0.1 running as Service Account For API.
 ```
 
-On a Mac, list employee's and show the CSV results in your default spreadsheet program:
+On a Mac, list employee's and show the CSV results in your default spreadsheet program (assuming a local copy):
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - list --csv > /tmp/z.csv && open /tmp/z.csv
+python3 deputy.py list --csv > /tmp/z.csv && open /tmp/z.csv
 ```
 
 Other examples.
 
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - resource 
+python3 deputy.py resource 
 ```
 
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - api --api resource/Employee/1 
+python3 deputy.py api --api resource/Employee/1 
 ```
 
 Call an API. Maximum of 500 results returned.
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - api --api resource/Roster
+python3 deputy.py api --api resource/Roster
 500 Resource records returned.
 ```
 
 Get a resource. All results returned. Uses the `QUERY` API feature.
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - resource --resource Roster
+python3 deputy.py resource --resource Roster
 1862 Resource records returned.
 ```
