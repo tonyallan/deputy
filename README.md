@@ -36,9 +36,10 @@ Copy the value to `access_token`.
 |`list`|For all Active employee's, show alphabetically: Name, Year and Email. Year will be blank if Training doesn't contain Year1, Year2 or Year3.|`--csv` output CSV to stdout|
 |`report`|List users alphabetically, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
 |`journal`|List all journal entries.|`--csv` output CSV to stdout|
-|`deputy-csv`|Read from `import_csv` and write to `deputy.csv` (in the correct format to allow bulk People creation.||
+|`user-csv`|Read from `import_csv` and write to `deputy.csv` (in the correct format to allow bulk People creation.||
 |`add-year`|Extract the year level from `import_csv`||
-|`view-api`|`GET` a resource API and display the JSON result. Limitted to 500 results.|`--api` execute an api. The default is `me`. |
+|`api`|`GET` an API and display the JSON result. Limitted to 500 results.|`--api`. The default is `me`. |
+|`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
 |`test`|Will execute the last test code I used. NOT RECOMMENDED unless you are playing with code!||
 
 ## Examples
@@ -60,13 +61,17 @@ curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan
 Other examples.
 
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api resource/Employee 
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - resource 
 ```
 
+Call an API. Maximum of 500 results returned.
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api me
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - api --api resource/Roster
+500 Resource records returned.
 ```
 
+Get a resource. All results returned. Uses the `QUERY` API feature.
 ```
-curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - view-api --api resource/Employee
+curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - resource --resource Roster
+1862 Resource records returned.
 ```
