@@ -3,9 +3,10 @@ Reporting and Utility script using the [deputy.com](https://www.deputy.com) [API
 
 ## Introduction
 
-This script is used by an educational institution where around 250 residental students are required to work in the kitchen on 'Bursary' shifts. The functionality is focussed on the need to manage and report on these students.
+These script is used by an educational institution where around 250 residental students are required to work in the kitchen on 'Bursary' shifts. The functionality is focussed on the need to manage and report on these students.
 
-The `deputy.py` Python script contains examples on how to invoke the API's.
+* `deputy.py` Python3 script contains examples on how to invoke the API's.
+* `explore.py` Python3 script allows Deputy records related to an employee to be listed to help understand some of the Deputy data model.
 
 ## Setup
 
