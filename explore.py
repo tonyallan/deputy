@@ -93,9 +93,9 @@ if __name__ == '__main__':
             # List created by eyeballing the Deputy API Docs — they are not always create on what a field contains
             # https://api-doc.deputy.com/Resources/Employee
             Employee = get_resource('Employee')
-            # Address
-            # Category
-            # Company
+            Address =           get_resource_and_extract('Address', Employee, find_id=args.id)
+            Category =          get_resource_and_extract('Category', Employee, find_id=args.id)
+            Company =           get_resource_and_extract('Company', Employee, find_id=args.id)
             # CompanyPeriod has Creator always set to -1?
             CompanyPeriod =     get_resource_and_extract('CompanyPeriod', Employee, find_id=args.id)  
             Contact =           get_resource_and_extract('Contact', Employee, find_id=args.id)
@@ -137,7 +137,7 @@ if __name__ == '__main__':
             Roster =            get_resource_and_extract('Roster', Employee, find_id=args.id, attributes=['Creator', 'ConfirmBy', 'Employee'])
             # [Exception: http_error] API resource/RosterOpen failed with 400 Bad Request.
             # RosterOpen =        get_resource_and_extract('RosterOpen', Employee, find_id=args.id, attributes=['Creator', 'Employee'])
-            # SalesData
+            SalesData =         get_resource_and_extract('SalesData', Employee, find_id=args.id, attributes=['Creator', 'Employee'])
             Schedule =          get_resource_and_extract('Schedule', Employee, find_id=args.id)
             SmsLog =            get_resource_and_extract('SmsLog', Employee, find_id=args.id)
             # State
