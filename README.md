@@ -96,7 +96,7 @@ To list all employee's:
 python3 explore.py --list
 ```
 
-To list all records for a particular employee (use theire id from the Employee list):
+To list all records for a particular employee (use their id from the Employee list):
 
 ```
 python3 explore.py -i 1
