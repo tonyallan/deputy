@@ -79,3 +79,43 @@ Get a resource. All results returned. Uses the `QUERY` API feature.
 python3 deputy.py resource --resource Roster
 1862 Resource records returned.
 ```
+
+## Explore
+
+The explore script searches through selected resources and displays records where all or a selected `EmployeeId` match the requested id.
+
+For help:
+
+```
+python3 explore.py --help
+```
+
+To list all employee's:
+
+```
+python3 explore.py --list
+```
+
+To list all records for a particular employee (use theire id from the Employee list):
+
+```
+python3 explore.py -i 1
+```
+
+To list all records for all employee's:
+
+```
+python3 explore.py
+```
+
+The format of the output is:
+```
+[resource:resource_id] field_in_record: employee_display_name (employee_id)
+```
+
+For example:
+```
+[Schedule:221] Creator: John Smith (1)
+```
+
+

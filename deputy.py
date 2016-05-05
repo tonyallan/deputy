@@ -17,6 +17,7 @@ import http.client
 import json
 import os
 import re
+import socket
 import sys
 import urllib.parse
 
@@ -105,7 +106,7 @@ class Deputy(object):
         conn.close()
         return api_resp
 
-    def resource(self, resource_name):
+    def resource(self, resource_name, sort=None):
         """
         Get all resources where there might be more than 500 resources.
         Resource name is just 'Employee' or 'Contact' -- just the name of the resource.
@@ -122,13 +123,22 @@ class Deputy(object):
         position = 0
         result = []
         while more:
-            data = {
-                'search':{
-                    'f1':{'field':'Id','type':'is','data':''}
-                        }, 
-                'start':position
-                }
-            api_resp = deputy.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
+            if sort is None:
+                data = {
+                    'search':{
+                        'f1':{'field':'Id','type':'is','data':''}
+                            }, 
+                    'start':position
+                    }
+            else:
+                data = {
+                    'search':{
+                        'f1':{'field':'Id','type':'is','data':''}
+                            }, 
+                    'sort': {sort: 'asc'},
+                    'start':position
+                    }                
+            api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
             result += api_resp
             if len(api_resp) == window:
                 position += window
@@ -151,7 +161,7 @@ class Deputy(object):
         result = {}
         while more:
             data = {'search':{'f1':{'field':'Id','type':'is','data':''}}, 'start':position}
-            api_resp = deputy.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
+            api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
             for record in api_resp:
                 result[record['Id']] = record
             if len(api_resp) == window:
@@ -169,7 +179,7 @@ class Deputy(object):
         May raise DeputyException.
         """
         employees = []
-        api_resp = self.resource('Employee')
+        api_resp = self.resource('Employee', sort='LastName')
         for employee in api_resp:
             # ignore inactive employee's. Those with a status=Discarded rather than Employed.
             if employee['Active'] is not True:
