@@ -28,7 +28,7 @@ Copy the value to `access_token`.
 
 `deptuty.config` shows all available configuration options.
 
-## Commands (`deputy.py`)
+## Commands (deputy.py)
 
 |Command|Purpose|Options|
 |-------|-------|-------|
@@ -43,7 +43,7 @@ Copy the value to `access_token`.
 |`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
 |`test`|Will execute the last test code I used. NOT RECOMMENDED unless you are playing with code!||
 
-## Examples (`deputy.py`)
+## Examples (deputy.py)
 
 The following example assumes that the latest version is always fetched from GitHub.
 ```
@@ -81,7 +81,7 @@ python3 deputy.py resource --resource Roster
 1862 Resource records returned.
 ```
 
-## Explore (`explore.py`)
+## Explore (explore.py)
 
 The explore script searches through selected resources and displays records where all or a selected `EmployeeId` match the requested id.
 
