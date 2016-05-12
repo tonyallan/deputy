@@ -10,7 +10,7 @@ These script is used by an educational institution where around 250 residental s
 
 ## Setup
 
-### Minimal Configuration
+#### Minimal Configuration
 You need a configuration file called `deputy.config` (in the current directory) that contains at least:
 
 ```
@@ -24,9 +24,18 @@ To create your token, create a service account as a Systems Administrator, logon
 
 Copy the value to `access_token`.
 
-### Configuration
+#### Configuration
 
-`deptuty.config` shows all available configuration options.
+[deputy.config](deptuty.config) shows all available configuration options.
+
+You can view the configuration (and test correct authorisation) by running hte script in the same folder as the configuration file:
+```
+python3 deputy.py config
+```
+The first line shows the API version and account associated with the provided credentials (from the `me` API call).
+```
+DeputyVersion: 3.0.1 running as Service Account For API.
+```
 
 ## Commands (deputy.py)
 
@@ -45,13 +54,9 @@ Copy the value to `access_token`.
 
 ## Examples (deputy.py)
 
-The following example assumes that the latest version is always fetched from GitHub.
+The following example (which lists all employees) assumes that the latest version is always fetched from GitHub, which is useful in an environment where you want everyone touse the latest version. I encourage you to view the script [deputy.py](deputy.py) before you run it.
 ```
 curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - list
-```
-The first line shows the version and account asscoaietd with the provided credentials (from the `me` API call).
-```
-DeputyVersion: 3.0.1 running as Service Account For API.
 ```
 
 On a Mac, list employee's and show the CSV results in your default spreadsheet program (assuming a local copy):
