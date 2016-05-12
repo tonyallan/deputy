@@ -54,7 +54,7 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 
 ## Examples (deputy.py)
 
-The following example (which lists all employees) assumes that the latest version is always fetched from GitHub, which is useful in an environment where you want everyone to always use the latest version of the script. I encourage you to view the script [deputy.py](deputy.py) before you run it.
+The following example (which lists all employees) assumes that the latest version is always fetched from GitHub, which is useful in an environment where you want everyone to always use the latest version of the script. I encourage you to view the script [deputy.py](deputy.py) before you run it using curl.
 ```
 curl -s -H "Cache-control: no-cache" https://raw.githubusercontent.com/tonyallan/deputy/master/deputy.py | python3 - list
 ```
