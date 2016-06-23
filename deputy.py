@@ -10,6 +10,7 @@
 # - add a year level for each student using the training module employee field to conveniently store the data.
 
 import argparse
+import collections
 import configparser
 import csv
 import datetime
@@ -21,15 +22,76 @@ import socket
 import sys
 import urllib.parse
 
-
-
-# Four classes as defined:
+# Five classes as defined:
+#   Counter is a Dict subclass to simplify counters
 #   DeputyException for API errors
 #   Deputy to provide API access
 #   Printx to facilitate CSV output to stdout for some commands
-#   College to encapsulate college specific functions:
-#       parse_student_record
-#       add_years_to_student_records
+#   College, which extends Deputy and adds a number of college specific functions and methods.
+
+class Counter(object):
+    """
+    A class of counters with a total and a set for each key.
+    """
+    def __init__(self):
+        self.counters = collections.OrderedDict()
+        self.data     = collections.OrderedDict()
+        self.Desc     = collections.namedtuple('Desc', ['title', 'initial', 'increment'])
+        self.Counter  = collections.namedtuple('Counter', ['id', 'title', 'count'])
+        self.total    = collections.OrderedDict()
+
+    def add_counter(self, id, title=None, initial=0, increment=1):
+        self.counters[id] = self.Desc(title, initial, increment)
+        self.total[id] = initial
+
+    def count(self, key='', id=None, increment=None):
+        if key not in self.data:
+            self.data[key] = {}
+            for c in self.counters:
+                self.data[key][c] = self.counters[c].initial
+        if increment is None:
+            self.data[key][id] += self.counters[id].increment
+            self.total[id]     += self.counters[id].increment
+        else:
+            self.data[key][id] += increment
+            self.total[id]     += increment
+
+    def get_count(self, key, id=None):
+        if id is None:
+            return self.data[key]
+        else:
+            return self.data[key][id]
+
+    def get_total(self, id=None):
+        if id is None:
+            return self.total
+        else:
+            return self.total[id]
+
+    def get_totals(self):
+        result = []
+        for id in self.counters:
+            result.append(self.Counter(id, self.counters[id].title, self.total[id]))
+        return result
+
+    def __len__(self): 
+        return len(self.data)
+
+    def __repr__(self):
+        return repr(self.data)
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __iter__(self):
+        return self.data.__iter__()
+
+    def __contains__(self, item):
+        return item in self.data
+
+    def __delitem__(self, key):
+        # totals are not reduced
+        del self.data[key]
 
 class DeputyException(Exception):
     def __init__(self, code, message):
@@ -41,24 +103,33 @@ class DeputyException(Exception):
         else:
             return '[Exception: {0}] {1}'.format(self.code, self.message)
 
+
 class Deputy(object):
     """
-    This is the only place the Deputy API is invoked.
-
-    Assumes the following configuration data — usually just an argparse result (class argparse.Namespace):
-        endpoint
-        timeout
-        token
+    This class and its subclasses are the only place the Deputy API is invoked.
 
     Raises a DeputyException if there is a problem, otherwise returns a decoded JSON response.
     """
 
-    # Deputy columns needed for the Deputy bulk user reation upload file. This may change in the future.
+    # Deputy columns needed for the Deputy bulk user creation upload file. This may change in the future.
     DEPUTY_COLS = ('First Name', 'Last Name', 'Time Card Number', 'Email', 'Mobile Number', 
         'Birth Date', 'Employment Date', 'Weekday', 'Saturday', 'Sunday', 'Public Holiday')
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, endpoint, token, timeout):
+        self.endpoint = endpoint
+        self.token    = token
+        self.timeout  = timeout
+        self.progress = Deputy.sample_progress
+
+    @staticmethod
+    def sample_progress(ptype, function, position):
+        """
+        A callback could be used to show progress if this class were used to generate web content. 
+        student_report(), in particular, takes a while to gather its data.
+
+        Set the callback with something like deputy.progress = your_function_name
+        """
+        print('[Fetching {0}={1} {2}]'.format(ptype, function, position))
 
     def api(self, api, method='GET', data=None, dp_meta=False):
         """
@@ -68,16 +139,17 @@ class Deputy(object):
 
         Returns the API data.
         """
-        url = urllib.parse.urlparse(urllib.parse.urljoin(self.config.endpoint, api))
+        #self.progress('api', api, 0)
+        url = urllib.parse.urlparse(urllib.parse.urljoin(self.endpoint, api))
         try:
-            conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=self.config.timeout)
+            conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=self.timeout)
         except:
-            raise DeputyException('invalid_url' 'Invalid URL: {0}'.format(self.config.endpoint))
+            raise DeputyException('invalid_url' 'Invalid URL: {0}'.format(self.endpoint))
 
         # format POST or PUT data as JSON and create the appripriate headers
         body = json.dumps(data)
         headers = {
-            'Authorization':  'OAuth {0}'.format(self.config.token),
+            'Authorization':  'OAuth {0}'.format(self.token),
             'Content-type':   'application/json',
             'Accept':         'application/json',
             }
@@ -106,163 +178,67 @@ class Deputy(object):
         conn.close()
         return api_resp
 
-    def resource(self, resource_name, sort=None):
+    def resource(self, resource_name, key='Id', sort='Id', join=[], select=None):
         """
         Get all resources where there might be more than 500 resources.
         Resource name is just 'Employee' or 'Contact' -- just the name of the resource.
-        The result a list of records.
+    
+        'key' is the dict key to fetch items from the dictionary.
+        'sort' is they data key to sort by.
+        'join' is a list of objects to include in the record, such as ['ContactObject']
+        'select' is one or more additional search terms select=[(field, type, data)]
+        The result an OrderedDict of namedtuple with the key as specified in the call order by 'sort'.
 
+        QUERY is very powerful by only the simplest features are used here.
         See: http://api-doc.deputy.com/API/Resource_Calls -- /QUERY
 
-        May raise DeputyException.
-
-        PerhapsToDo: Add support for sort [FieldName : asc , FieldName:desc , …. ]
+        May raise DeputyException from the API call.
         """
-        window = 500
-        more = True
+        window = 500    # hardcoded in deputy's API.
         position = 0
-        result = []
-        while more:
-            if sort is None:
-                data = {
-                    'search':{
-                        'f1':{'field':'Id','type':'is','data':''}
-                            }, 
-                    'start':position
-                    }
-            else:
-                data = {
-                    'search':{
-                        'f1':{'field':'Id','type':'is','data':''}
-                            }, 
-                    'sort': {sort: 'asc'},
-                    'start':position
-                    }                
-            api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
-            result += api_resp
-            if len(api_resp) == window:
-                position += window
-            else:
-                more = False
-        return result
-
-    def resource_by_id(self, resource_name):
-        """
-        Get all resources where there might be more than 500 resources.
-        Resource name is just 'Employee' or 'Contact' -- just the name of the resource.
-
-        May raise DeputyException.
-
-        The result always uses Id as the key.
-        """
-        window = 500
-        more = True
-        position = 0
-        result = {}
-        while more:
-            data = {'search':{'f1':{'field':'Id','type':'is','data':''}}, 'start':position}
-            api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=data)
+        result = collections.OrderedDict()
+        while True:
+            self.progress('resource', resource_name, position)
+            query = {
+                'search': {
+                    'f1':{'field':key, 'type':'is', 'data':''}
+                        }, 
+                'sort': {sort: 'asc'},
+                'join' : join,
+                'start': position
+                }
+            if select is not None:
+                for s_field, s_type, s_data in select:
+                    query['search'][s_field+'_'+str(s_data)] = {'field':s_field, 'type':s_type, 'data':s_data}
+            api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=query)
             for record in api_resp:
-                result[record['Id']] = record
+                result[record[key]] = record
             if len(api_resp) == window:
                 position += window
             else:
-                more = False
+                break
+        self.progress('resource', resource_name, len(result))
         return result
 
-
-    def employees(self):
+    def employees(self, key='Id', sort='LastName', join=[]):
         """
-        Return a sorted list of Active employees:
-            [{employee_id, employee_name, contact_id}]
-
+        Return OrderedDict of Active employees sorted by LastName.
         May raise DeputyException.
         """
-        employees = []
-        api_resp = self.resource('Employee', sort='LastName')
-        for employee in api_resp:
-            # ignore inactive employee's. Those with a status=Discarded rather than Employed.
-            if employee['Active'] is not True:
-                continue
-            employees.append({
-                'employee_id':   employee['Id'],
-                'employee_name': employee['DisplayName'],
-                'contact_id':    employee['Contact'],
-                'employee_role': employee['Role']
-                })
-        return employees
-
-    def employee_by_id(self):
-        employees = {}
-        for employee in self.employees():
-            #print(json.dumps(employee, sort_keys=True, indent=4, separators=(',', ': ')))
-            employees[employee['employee_id']] = employee
-        return employees
+        return self.resource('Employee', key=key, sort=sort, join=join, select=[('Active', 'eq',  True)])
 
     def employee_by_email(self):
-        contacts = self.resource_by_id('Contact')
-        employees = {}
-        for employee in self.employees():
-            email_address = contacts[employee['contact_id']]['Email']
-            employees[email_address] = employee
-        return employees
-
-    def employee_roles(self):
         """
-        Get the name for each Role.
-        e.g. Id:71 = Role:"Location Manager"
-
-        Return a hash of Role indexed by the EmployeeRole Id.
-        This is always a small table so a normal API call is used.
-
+        Return an OrderedDict of employee's with email as the key.
         May raise DeputyException.
         """
-        employee_roles = {}
-        api_resp = self.api('resource/EmployeeRole')
-        for role in api_resp:
-            employee_roles[role['Id']] = role['Role']
-        return employee_roles
-
-    # The remaining methods are College specific
-
-    def years(self):
-        """
-        This is a college specific method to fetch the training module id labels.
-        Returns something like:
-        {   "Year1": 4,
-            "Year2": 6,
-            "Year3": 7  }
-
-        May raise DeputyException.
-        """
-        api_resp = self.api('resource/TrainingModule')
-        years = {}
-        for tm in api_resp:
-            if tm['Title'].startswith('Year'):
-                years[tm['Title']] = tm['Id']
-        return years
-
-    def student_years(self):
-        """
-        This is a college specific method.
-        Return a hash of year levels for each student who has a year assigned:
-            [{employee_id:year_level}]
-        Assumes only one year per student.
-
-        May raise DeputyException.
-        """
-        # invert the list
-        year_list = {}
-        years = self.years()
-        for year in years:
-            year_list[years[year]] = year
-
-        training_records = {}
-        api_resp = self.api('resource/TrainingRecord')
-        for record in api_resp:
-            if record['Module'] in year_list:
-                training_records[record['Employee']] = year_list[record['Module']]
-        return training_records
+        employees = self.employees(join=['ContactObject'])
+        email_employees = collections.OrderedDict()
+        for id in employees:
+            employee = employees[id]
+            email_address = employee['ContactObject']['Email']
+            email_employees[email_address] = employee
+        return email_employees
 
 
 class Printx(object):
@@ -296,28 +272,38 @@ class Printx(object):
         else:
             self.text(text, *values)
 
+    def stats(self, deputy):
+        self.text('')
+        for stat in deputy.stats:
+            self.text('{0}: {1}', stat.text, stat.value)
 
-class College(object):
+
+class College(Deputy):
     """
-    This class is just a wrapper for three functions used by the script:
-        parse_csv — to read an input CSV row, perform fixups, and create a Deputy user creation CSV row.
+    This class extends Deputy and adds a number of functions and methods.
+
+    Static Methods:
+        parse_student_record — to read an input CSV row, perform fixups, and create a Deputy user creation CSV row.
         add_years_to_student_records — to add a student year level as a new TrainingRecord resource.
+
+    Methods:
+
     """
-    def __init__(self, deputy):
-        self.deputy=deputy
-        # fetch the date now so all timestamps are the same for this execution.
-        self.today_iso = datetime.datetime.now().isoformat()
 
-    def today(self):
-        return self.today_iso
+    def __init__(self, endpoint, token, timeout):
+        # A function may also return some statistics.
+        self.stats = None
+        self.Stat = collections.namedtuple('Stat', ['id', 'text', 'value'])
+        super().__init__(endpoint, token, timeout)
 
-    def parse_student_record(self, row, include_mobile=False):
+    @staticmethod
+    def parse_student_record(row, include_mobile=False):
         """
-        Parse a row from the input CSV file and create a row for the Deputy compatible user CSV file, 
-        applying college specifc business rules.
+        Function to parse a row from the input CSV file and create a row for the Deputy compatible 
+        user CSV file, applying college specifc business rules.
 
-        Returns a tuple (messages, row), where messages is an array of parse processing messages, and
-        row is the Deputy output record.
+        Returns a tuple (messages, row), where messages is an array of parse processing messages,
+        and row is the Deputy output record.
 
         synergetic_csv                      deputy_csv
         ----------------------------------  -----------------------------
@@ -465,7 +451,7 @@ class College(object):
         in_csv  = open(import_csv)
         reader = csv.DictReader(in_csv)
 
-        employees = self.deputy.employee_by_email()
+        employees = self.employee_by_email()
 
         count = 0
         not_found_count = 0
@@ -486,7 +472,7 @@ class College(object):
 
             count += 1
             employee = employees[email]
-            employee_id = employee['employee_id']
+            employee_id = employee['Id']
 
             year = parsed_row['year']
 
@@ -503,17 +489,239 @@ class College(object):
             data = {
                'Employee': employee_id,
                'Module': training_module,
-               'TrainingDate': self.today(),
+               'TrainingDate': datetime.datetime.now().isoformat(),
                'Active': True
             }
-            api_resp = deputy.api('resource/TrainingRecord', method='POST', data=data)
+            api_resp = self.api('resource/TrainingRecord', method='POST', data=data)
             added_count += 1
 
+        self.stats = None
         messages.append('Processed {0} students.'.format(count))
         messages.append('{0} students not found in Deputy.'.format(not_found_count))
         messages.append('{0} students already had a year level set.'.format(already_count))
         messages.append('Added year level to {0} students.'.format(added_count))
         return messages
+
+    def years(self):
+        """
+        This is a college specific method to fetch the training module id labels.
+        Returns something like:
+        {   "Year1": 4,
+            "Year2": 6,
+            "Year3": 7  }
+
+        May raise DeputyException.
+        """
+        api_resp = self.api('resource/TrainingModule')
+        years = {}
+        for tm in api_resp:
+            if tm['Title'].startswith('Year'):
+                years[tm['Title']] = tm['Id']
+        self.stats = [self.Stat('years', 'Years', len(years))]
+        return years
+
+    def student_years(self):
+        """
+        This is a college specific method.
+        Return a hash of year levels for each student (EmployeeId) who has a year assigned:
+            [{employee_id:year_level}]
+        Assumes only one year per student.
+
+        May raise DeputyException.
+        """
+        # invert the list
+        year_list = {}
+        years = self.years()
+        for year in years:
+            year_list[years[year]] = year
+
+        training_records = {}
+        api_resp = self.api('resource/TrainingRecord')
+        for record in api_resp:
+            if record['Module'] in year_list:
+                training_records[record['Employee']] = year_list[record['Module']]
+        self.stats = [self.Stat('training_records', 'Training Records', len(training_records))]
+        return training_records
+
+    def bursary_student_list(self):
+        """
+        List of Bursary Students.
+        A Bursary Student is an employee who has a training record that includes Year1/2/3.
+        """
+        students = self.employees(join=['ContactObject'])
+        student_years = self.student_years()
+        Student = collections.namedtuple('Student', ['Id', 'Name', 'Year', 'Email'])
+        result = []
+        for student_id in students:
+            student = students[student_id]
+            name = student['DisplayName']
+            if student_id in student_years:
+                year = student_years[student_id]
+            else:
+                continue
+            email_address = student['ContactObject']['Email']
+            if year is not None:
+                result.append(Student(student_id, name, year, email_address))
+        self.stats = [
+            self.Stat('students', 'Students', len(students)),
+            self.Stat('bursary_students', 'Bursary Students', len(result))
+            ]
+        return result
+
+    def deputy_journal_entries(self):
+        """
+        List of Journal Entries for activie employee's.
+        """
+        employees = self.employees(join=['ContactObject'])
+        journals = self.resource('Journal')
+        Journal = collections.namedtuple('Journal', ['Date', 'Name', 'Email', 'Category', 'Comment', 'Creator'])
+        result = []
+        for journal_id in journals:
+            journal = journals[journal_id]
+            employee_id = journal['EmployeeId']
+            if employee_id in employees:
+                # only bother about employees that are still active
+                employee = employees[employee_id]
+                name = employee['DisplayName']
+                date = journal['Date'][0:10] # just the date
+                comment = journal['Comment']
+                if len(journal['Category']) > 0:
+                    # assume only one used for now
+                    category = journal['Category'][0]['Category']
+                else:
+                    category = ''
+                email = employee['ContactObject']['Email']
+                if journal['Creator'] in employees:
+                    # employee who created the record is still active
+                    creator = employees[journal['Creator']]['DisplayName']
+                else:
+                    creator = ''
+            result.append(Journal(date, name, email, category, comment, creator))
+        self.stats = [self.Stat('journal_entries', 'Journal Entries', len(result))]
+        return result
+
+    def student_timesheet_count(self, location_name):
+        """
+        Return a count of approved, non-leave timesheets by employee_id.
+        """
+        timesheets = self.resource('Timesheet', join=['OperationalUnitObject'])
+        students = Counter()
+        students.add_counter('timesheet', 'Timesheet')
+        for id in timesheets:
+            timesheet = timesheets[id]
+            # ignore if there is no location or it's not a match
+            if location_name is not None:
+                if timesheet['OperationalUnitObject']['CompanyName'] != location_name:
+                    continue
+            # make sure someone approved then
+            if not timesheet['TimeApproved']:
+                continue
+            # make sure they are not a leave timesheet
+            if timesheet['IsLeave']:
+                continue
+            employee_id = timesheet['Employee']
+            students.count(employee_id, 'timesheet')
+        return students
+
+    def student_roster_count(self, location_name):
+        """
+        Return a count of approved, non-leave timesheets by Employee for the selected location.
+        Employee may be for an inactive employee.
+        Employee is ignored if it is zero.
+        """
+        rosters = self.resource('Roster', join=['OperationalUnitObject'], select=[('Employee', 'ne',  0)])
+        students = Counter()
+        students.add_counter('rostered',  'Rosters Rostered')
+        students.add_counter('completed', 'Rosters Completed')
+        students.add_counter('open',      'Rosters Open')
+        for id in rosters:
+            roster = rosters[id]
+            # ignore if there is no location or it's not a match
+            if location_name is not None:
+                if roster['OperationalUnitObject']['CompanyName'] != location_name:
+                    continue
+            employee_id = roster['Employee']
+            timesheet = roster['MatchedByTimesheet']
+            students.count(employee_id, 'rostered')
+            if timesheet > 0:
+                students.count(employee_id, 'completed')
+            if roster['Open']:
+                students.count(employee_id, 'open')
+        self.stats = [
+            self.Stat('rosters',   'Rosters (for all locations)',   len(rosters)),
+            self.Stat('students',  'Rosters with Students',  len(students))
+        ]
+        for total in students.get_totals():
+            self.stats.append(self.Stat(*total))
+        return students
+
+    def student_report(self, obligation_by_year, location_name):
+        """
+        Student roster data.
+        Timesheet data exists but is not currently used.
+        """
+ 
+        # fetch student.Id, student.Name, and student.Year
+        students = self.bursary_student_list()
+
+        # count approved, non-leave 'timesheet'
+        #student_timesheet_count = self.student_timesheet_count(location_name)
+
+        # count 'rostered', 'completed', 'open' rosters
+        student_roster_count = self.student_roster_count(location_name)
+        roster_stats = self.stats
+        #print(json.dumps(roster_stats, indent=4, separators=(',', ': ')))
+        
+        Report = collections.namedtuple('Report', ['Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
+                'PercentRostered', 'PercentCompleted', 'Issues']) # removed 'Timesheets'
+
+        counts = Counter()
+        counts.add_counter('Year1',                  'Students in Year 1')
+        counts.add_counter('Year2',                  'Students in Year 2')
+        counts.add_counter('Year3',                  'Students in Year 3')
+        counts.add_counter('roster_rostered_count',  'Rostered')
+        counts.add_counter('roster_completed_count', 'Completed Rosters')
+        counts.add_counter('roster_open_count',      'Open Rosters')
+
+        # write out the sorted list of results with a percentage complete
+        # loop using student_list because it is sorted and therefore the report will be sorted.
+        result = []
+        for student in students:
+            # student.Id, student.Name, student.Year
+            #if student.Id in student_timesheet_count:
+            #    stc = student_timesheet_count[student.Id]
+            #else:
+            #    stc = {'timesheet': 0}
+            if student.Id in student_roster_count:
+                src = student_roster_count[student.Id]
+            else:
+                src = {'rostered': 0, 'completed': 0, 'open': 0}
+            counts.count(id='roster_rostered_count',  increment=src['rostered'])
+            counts.count(id='roster_completed_count', increment=src['completed'])
+            counts.count(id='roster_open_count',      increment=src['open'])
+            obligation = int(obligation_by_year[student.Year])
+            counts.count(id=student.Year)
+            issues = ''
+
+            percentage_rostered = '{0:.0f}%'.format(((0.0+src['rostered'])/obligation)*100.0)
+            if (0.0+src['rostered'])/obligation < 1:
+                issues = 'Incomplete roster. '
+            percentage_complete = '{0:.0f}%'.format(((0.0+src['completed'])/obligation)*100.0)
+            if (0.0+src['completed'])/obligation < 1:
+                issues += 'Outstanding Shifts.'
+
+            result.append(Report(student.Name, student.Year, obligation, 
+                src['rostered'], src['open'], src['completed'], percentage_rostered, 
+                percentage_complete, issues)) # removed stc['timesheet']
+
+        # and some summary info
+        self.stats = []
+        self.stats.append(self.Stat('student_bursary', 'Bursary Students', len(students)))
+        #self.stats.append(self.Stat('student_timesheet', 'Students with Timesheets', len(student_timesheet_count)))
+        self.stats.append(self.Stat('student_roster', 'Students with Rosters', len(student_roster_count)))
+        for total in counts.get_totals():
+            self.stats.append(self.Stat(*total))
+        return result
 
 
 # ======================================================================================================================
@@ -530,19 +738,10 @@ if __name__ == '__main__':
                 return config[section][item]
         return missing
 
-    api_endpoint   = get_config(config, 'DEPUTY', 'api_endpoint')
-    access_token   = get_config(config, 'DEPUTY', 'access_token')
     import_csv     = get_config(config, 'IMPORT', 'import_csv', missing='import.csv')
     deputy_csv     = get_config(config, 'IMPORT', 'deputy_csv', missing='deputy.csv')
     email_test     = get_config(config, 'IMPORT', 'email_test')
     email_domain   = get_config(config, 'IMPORT', 'email_domain')
-
-    if api_endpoint is None:
-        print('Error. Missing configuration item api_endpoint.')
-        sys.exit(1)
-    if access_token is None:
-        print('Error. Missing configuration item access_token.')
-        sys.exit(1)
 
     # students who don't have to do any bursarys
     exclude = []
@@ -557,18 +756,24 @@ if __name__ == '__main__':
             exclude_postgrad.append(u.strip())
     
     # process the command line
-    parser = argparse.ArgumentParser(
-        description='Deputy Utilities',
-        )
-    parser.add_argument('-e', '--endpoint', help='API endpoint (override config file)',      default=api_endpoint)
-    parser.add_argument('-a', '--token',    help='Access Token (override config file)',      default=access_token)
-    parser.add_argument('--import_csv',     help='Import CSV (override config file)',        default=import_csv)
-    parser.add_argument('--deputy_csv',     help='Deputy CSV output (override config file)', default=deputy_csv)
-    parser.add_argument('-t', '--timeout',  help='HTTP timeout',          default=20, type=int)
-    parser.add_argument('command',          help='command (e.g. status)', default='intro', nargs='?',
+    parser = argparse.ArgumentParser(description='Deputy Reporting and Utilities')
+    parser.add_argument('-e', '--endpoint', help='API endpoint (override config file)',
+        default=get_config(config, 'DEPUTY', 'api_endpoint'))
+    parser.add_argument('-a', '--token',    help='Access Token (override config file)',
+        default=get_config(config, 'DEPUTY', 'access_token'))
+    parser.add_argument('--import_csv',     help='Import CSV (override config file)',
+        default=import_csv)
+    parser.add_argument('--deputy_csv',     help='Deputy CSV output (override config file)',
+        default=deputy_csv)
+    parser.add_argument('-t', '--timeout',  help='HTTP timeout',
+        default=20, type=int)
+    parser.add_argument('command',          help='command (e.g. status)',
+        default='intro', nargs='?',
         choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'api', 'resource', 'test'])
-    parser.add_argument('--api',            help='View API',              default='me')
-    parser.add_argument('--resource',       help='View Response',         default='Employee')
+    parser.add_argument('--api',            help='View API',
+        default='me')
+    parser.add_argument('--resource',       help='View Response',
+        default='Employee')
     parser.add_argument('--mobile',         help='Include Mobile phone number in the Deputy CSV file', action='store_true')
     parser.add_argument('--csv',            help='Format output as CSV',  action='store_true')
     parser.add_argument('--hide_ok',        help='In report, hide if no problems.', action='store_true')
@@ -577,11 +782,9 @@ if __name__ == '__main__':
     # All exceptions are fatal. API errors are displayed in the except statement.
     try:
         p = Printx(csv_flag=args.csv)
-        deputy = Deputy(args)
-        api_resp = deputy.api('me')
-
-        # class containg college specific functions
-        college = College(deputy)
+        #deputy = Deputy(args.endpoint, args.token, args.timeout)
+        college = College(args.endpoint, args.token, args.timeout)
+        api_resp = college.api('me')        
 
         if args.command == 'intro':
             p.text('DeputyVersion: {0} running as {1}.\n', api_resp['DeputyVersion'], api_resp['Name'])
@@ -602,7 +805,7 @@ if __name__ == '__main__':
             out_csv = open(args.deputy_csv, 'w')
 
             reader = csv.DictReader(in_csv)
-            writer = csv.DictWriter(out_csv, fieldnames=deputy.DEPUTY_COLS)
+            writer = csv.DictWriter(out_csv, fieldnames=college.DEPUTY_COLS)
             writer.writeheader()
 
             count =0
@@ -629,60 +832,32 @@ if __name__ == '__main__':
         elif args.command == 'add-year':
             p.text('Add year level as a TrainingRecord for each student.')
             p.text('Fetching years...')
-            years = deputy.years()
+            years = college.years()
             p.text('Fetching training records (for year)...')
-            student_years = deputy.student_years()
+            student_years = college.student_years()
             messages = college.add_years_to_student_records(years, student_years, import_csv)
             p.text('\n'.join(messages))
 
         elif args.command == 'list':
             p.text('List of Bursary Students and their year level and email.\n')
-            p.headers('Name', 'Year', 'Email')
-            p.text('Fetching employees...')
-            students = deputy.employees()
-            #student_roles = deputy.get_employee_roles()
-            p.text('Fetching training records (for year)...')
-            student_years = deputy.student_years()
-            p.text('Fetching contact details...')
-            contacts = deputy.resource_by_id('Contact')
-            bursary_student_count = 0
-            for student in students:
-                name = student['employee_name']
-                if student['employee_id'] in student_years:
-                    year = student_years[student['employee_id']]
-                else:
-                    continue
-                email_address = contacts[student['contact_id']]['Email']
-                if year is not None:
-                    p.data('{0} ({1}, {2})', name, year, email_address)
-                    bursary_student_count += 1
-            p.text('\nListed {0} Bursary Students out of {1} active Deputy users.', bursary_student_count, len(students))
+            p.headers('Id', 'Name', 'Year', 'Email')
+            for s in college.bursary_student_list():
+                p.data('[{0}] {1} ({2}, {3})', s.Id, s.Name, s.Year, s.Email)
+            p.stats(college)
 
         elif args.command == 'journal':
             p.text('Journal Entries.\n')
             p.headers('Date', 'Name', 'Email', 'Category', 'Comment', 'Creator')
-            p.text('Fetching employees...')
-            students = deputy.employee_by_id()
-            p.text('Fetching journals...')
-            journals = deputy.resource('Journal')
-            p.text('Fetching contacts...')
-            contacts = deputy.resource_by_id('Contact')
-            for journal in journals:
-                employee_id = journal['EmployeeId']
-                name = students[employee_id]['employee_name']
-                date = journal['Date'][0:10] # just the date
-                comment = journal['Comment']
-                if len(journal['Category']) > 0:
-                    # assume only one used for now
-                    category = journal['Category'][0]['Category']
-                else:
-                    category = ''
-                email = contacts[students[employee_id]['contact_id']]['Email']
-                creator = students[journal['Creator']]['employee_name']
-                p.data('[{0}] {1} ({2}) [{3}] {4} (by {5})', date, name, email, category, comment, creator)
+            for e in college.deputy_journal_entries():
+                p.data('[{0}] {1} ({2}) [{3}] {4} (by {5})', e.Date, e.Name, e.Email, e.Category, e.Comment, e.Creator)
+            p.stats(college)
 
         elif args.command == 'report':
             p.text('Student compliance report.\n')
+
+            p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
+                '% Rostered', '% Completed', 'Issues') # removed for now 'Timesheets'
+
             # Fetch student and config data
             if get_config(config, 'REPORT', 'shifts_year1') is None:
                 shift_obligations = None
@@ -691,213 +866,52 @@ if __name__ == '__main__':
                     'Year1': get_config(config, 'REPORT', 'shifts_year1'),
                     'Year2': get_config(config, 'REPORT', 'shifts_year2'),
                     'Year3': get_config(config, 'REPORT', 'shifts_year3')}  
-            p.text('Fetching employees...')          
-            student_list = deputy.employees()
-            p.text('Fetching training records (for year)...')
-            student_years = deputy.student_years()
-            # setup our 'students' hash that will hold their roster data.
-            bursary_student_count = 0
-            non_bursary_student_count = 0
-            year_count = {'Year1': 0, 'Year2': 0, 'Year3':0}
-            students = {}
-            for student in student_list:
-                name = student['employee_name']
-                employee_id = student['employee_id']
-                if employee_id not in student_years:
-                    non_bursary_student_count += 1
-                    continue
-                year = student_years[employee_id]
-                if year is not None:
-                    students[employee_id] = {
-                        'name': name,
-                        'year': year,
-                        'rostered': 0,
-                        'completed': 0,
-                        'open': 0,
-                        'timesheet': 0
-                    }
-                    if shift_obligations is not None:
-                        students[employee_id]['obligation'] = int(shift_obligations[year])
-                    bursary_student_count += 1
-                    year_count[year] += 1                    
-
-            # ignore Swat Vac Bursary's
-            p.text('Fetching operational units (for locations)...')
-            operational_units = deputy.resource_by_id('OperationalUnit')
-            # In the UI it's called the Location Name.
-            location_name = get_config(config, 'REPORT', 'location_name')
-
-            # itterate through their timesheets and counting if TimeApproved=True and IsLeave=False
-            p.text('Fetching timesheets...')
-            timesheets = deputy.resource('Timesheet')
-            for timesheet in timesheets:
-                # ignore if there is no location or it's not a match
-                if location_name is not None:
-                    if operational_units[timesheet['OperationalUnit']]['CompanyName'] != location_name:
-                        continue
-                # make sure someone approved then
-                if not timesheet['TimeApproved']:
-                    continue
-                # make sure they are not a leave timesheet
-                if timesheet['IsLeave']:
-                    continue
-                employee_id = timesheet['Employee']
-                if employee_id in students:     # ignore test data or shifts by non Year1/2/3 students
-                    students[employee_id]['timesheet'] += 1
-
-            # itterate through their rosters, counting rostered and completed shifts
-            p.text('Fetching rosters...')
-            rosters = deputy.resource('Roster')
-            rostered_count = 0
-            completed_count = 0
-            open_count = 0
-            for roster in rosters:
-                # ignore if there is no location or it's not a match
-                if location_name is not None:
-                    if operational_units[roster['OperationalUnit']]['CompanyName'] != location_name:
-                        continue
-                # Count but don't ignore open shifts
-                if roster['Open']:
-                    open_count += 1
-                employee_id = roster['Employee']
-                timesheet = roster['MatchedByTimesheet']
-                if employee_id in students:     # ignore test data or shifts by non Year1/2/3 students
-                    students[employee_id]['rostered'] += 1
-                    rostered_count += 1
-                    if timesheet > 0:
-                        students[employee_id]['completed'] += 1
-                        completed_count += 1
-                    if roster['Open']:
-                        students[employee_id]['open'] += 1
-
-            # headers
-            if shift_obligations is None:
-                p.headers('Name', 'Rostered', 'Open', 'Completed', 
-                    'Timesheets', 'Issues')
-            else:
-                p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
-                    '% Rostered', '% Completed', 'Timesheets', 'Issues')
-
-            # write out the sorted list of results with a percentage complete
-            # loop using student_list because it is sorted and therefore the report will be sorted.
-            hidden = 0
-            for s in student_list: 
-                issues = ''
-                employee_id = s['employee_id']
-                if employee_id in students:
-                    student = students[employee_id]
-                    if shift_obligations is None:
-                        p.data('{0} / R:{1}  O:{2} C:{3} T:{4} / {5}', 
-                            student['name'], student['rostered'], student['open'], 
-                            student['completed'], student['timesheet'], issues)
-                    else:
-                        percentage_rostered = '{0:.0f}%'.format(((0.0+student['rostered'])/student['obligation'])*100.0)
-                        if (0.0+student['rostered'])/student['obligation'] < 1:
-                            issues = 'Incomplete roster. '
-                        percentage_complete = '{0:.0f}%'.format(((0.0+student['completed'])/student['obligation'])*100.0)
-                        if (0.0+student['completed'])/student['obligation'] < 1:
-                            issues += 'Outstanding Shifts.'
-                        # option to hide record where completed = 100%
-                        show = True
-                        if args.hide_ok:
-                            if (0.0+student['completed'])/student['obligation'] >= 1:
-                                show = False
-                                hidden += 1
-                        if show:
-                            p.data('{0} ({1}): {2}, {3}, {4} {5} {6} {7} {8} {9}', 
-                                student['name'], student['year'], student['obligation'], 
-                                student['rostered'], student['open'], student['completed'], percentage_rostered, 
-                                percentage_complete, student['timesheet'], issues)
-            # and some summary info
-            # active is Status=Employed
-            p.text('\nListed {0} Bursary Students out of {1} active Deputy users. Excluded {2} non-bursary users.', 
-                bursary_student_count, len(student_list), non_bursary_student_count)
-            if shift_obligations is not None:
-                p.text('Students in Year1: {0}; Year2: {1}; Year3: {2}; Total: {3}', 
-                    year_count['Year1'], year_count['Year2'], year_count['Year3'], 
-                    year_count['Year1']+year_count['Year2']+year_count['Year3'])
-            p.text('Rosters {0}, rostered {1}, completed {2}, open {3}.', 
-                len(rosters), rostered_count, completed_count, open_count)
-            if args.hide_ok:
-                p.text('{0} 100% completed records hidden.', hidden)
+            location_name  = get_config(config, 'REPORT', 'location_name')
+            for student in college.student_report(shift_obligations, location_name):
+                p.data('{0} ({1}): {2}, {3}, {4} {5} {6} {7} {8}', *student)
+            p.stats(college)
 
         elif args.command == 'api':
             # e.g. python3 deputy.py api --api resource/EmployeeRole
             p.text('Fetching api...{0}', args.api)
-            api_resp = deputy.api(args.api)
+            api_resp = college.api(args.api)
             print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
             print('{0} API records returned.'.format(len(api_resp)))
 
         elif args.command == 'resource':
             # e.g. python3 deputy.py resource --resource
             p.text('Fetching resource...{0}', args.resource)
-            api_resp = deputy.resource(args.resource)
+            api_resp = college.resource(args.resource)
             print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
             print('{0} Resource records returned.'.format(len(api_resp)))
 
         elif args.command == 'test':
             #pass
-            #y = deputy.student_years()
-            y = deputy.employee_by_id()
+            location_name = get_config(config, 'REPORT', 'location_name')
+            y = college.student_roster_count(location_name)
+            #y = college.student_years()
+            #y = college.employees(key='Id', join=['ContactObject'])
             print(json.dumps(y, sort_keys=True, indent=4, separators=(',', ': ')))
-            print('{0} Resource records returned.'.format(len(y)))
+            print('{0} records returned.'.format(len(y)))
+
+            #for employee in self.employees(join=['ContactObject']):
+            #    email_address = employee['ContactObject']['Email']
 
             #p.text('Fetching rosters...')
             #rosters = deputy.get_resources('Roster')
             #for r in rosters:
             #    # "StartTimeLocalized": "2016-03-16T13:30:00+11:00",
             #    # if r['StartTimeLocalized'].startswith('2016-04-14T09:30'):
-            #    # 674 = Lorraine JAFFER
+            #    # 674 = Fred Smith
             #    #if r['Employee'] == 439:
             #    #    print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
             #    if r['Comment'] is not None:
             #        if len(r['Comment']) > 0:
             #            print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
 
-            #email_addresses = deputy.get_email()
-            #print(json.dumps(email_addresses, sort_keys=True, indent=4, separators=(',', ': ')))
-            #print(len(email_addresses))
-            ##data = {'search':{'f1':{'field':'FirstName','type':'lk','data':'%Reb%'}}}
-            ##data = {'search':{'f1':{'field':'FirstName','type':'eq','data':'Tony'}}}
-            #data = {'search':{'f1':{'field':'Id','type':'is','data':''}}, 'start':500}
-            #api_resp = deputy.api('resource/Contact/QUERY', method='POST', data=data)
-            ##resp = deputy.last_response
-            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-            #print(len(api_resp))
-
-            #print(json.dumps(deputy.get_years(), sort_keys=True, indent=4, separators=(',', ': ')))
-            #data = {
-            #   'Employee': 412,
-            #   # OperationalUnit
-            #   'KeyInt': 1,
-            #   'KeyString': 'fsmith',
-            #   'DocumentId': 'student_id',
-            #   'Label': 'Student ID',
-            #   'Permission': ''
-            #}
-            #api_resp = deputy.api('/customdata', method='PUT', data=data)
-            #resp = deputy.last_response
-            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-
-            #data = {
-            #   'intCompanyId': 1,
-            #   'strFirstName': 'Fred',
-            #   'strLastName': 'Smith',
-            #   'strEmail': 'test@example.com',
-            #   'intRoleId': 50,
-            #   'strDob': '',
-            #   'strMobilePhone': '0419 123 456'
-            #}
-            #api_resp = deputy.api('/addemployee', method='POST', data=data)
-            #resp = deputy.last_response
-            #print(resp.status, resp.reason, dict(resp.getheaders()), resp.read())
-            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
 
     except DeputyException as e:
         print(str(e))
         sys.exit(1)
-    #except Exception as e:
-    #    print(str(e))
-    #    sys.exit(1)
 
     sys.exit(0)

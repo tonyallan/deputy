@@ -19,7 +19,7 @@ def get_config(config, section, item, missing=None):
     return missing
 
 def get_resource(resource_name, count=True, select=None):
-    res = deputy.resource_by_id(resource_name)
+    res = deputy.resource(resource_name)
     if count:
         print('Imported {0} records from resource {1}.'.format(len(res), resource_name))
     if select is not None:
@@ -80,14 +80,15 @@ if __name__ == '__main__':
 
     # All exceptions are fatal. API errors are displayed in the except statement.
     try:
-        deputy = Deputy(args)
+        deputy = Deputy(args.endpoint, args.token, args.timeout)
         api_resp = deputy.api('me')
         print('DeputyVersion: {0} running as {1}.\n'.format(api_resp['DeputyVersion'], api_resp['Name']))
 
         if args.list:
             # fetch a list of all employees and list in alphabetical order
             employees = deputy.resource('Employee', sort='LastName')
-            for employee in employees:
+            for id in employees:
+                employee = employees[id]
                 print('[{0}] {1}'.format(employee['Id'], employee['DisplayName']))
         else:
             # List created by eyeballing the Deputy API Docs — they are not always create on what a field contains
