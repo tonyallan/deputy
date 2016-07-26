@@ -568,12 +568,17 @@ class College(Deputy):
             ]
         return result
 
-    def deputy_journal_entries(self):
+    def deputy_journal_entries(self, start_date=None, end_date=None):
         """
-        List of Journal Entries for activie employee's.
+        List of Journal Entries for active employee's.
+        Journal entries are selected by Date (yyyy-mm-dd) between start_date and end_date.
         """
         employees = self.employees(join=['ContactObject'])
-        journals = self.resource('Journal')
+        journals = self.resource('Journal',
+            select=[
+                ('Date', 'ge',  start_date),
+                ('Date', 'le',  end_date)
+            ])
         Journal = collections.namedtuple('Journal', ['Date', 'Name', 'Email', 'Category', 'Comment', 'Creator'])
         result = []
         for journal_id in journals:
@@ -600,9 +605,10 @@ class College(Deputy):
         self.stats = [self.Stat('journal_entries', 'Journal Entries', len(result))]
         return result
 
-    def student_timesheet_count(self, location_name):
+    def student_timesheet_count(self, location_name, start_date=None, end_date=None):
         """
         Return a count of approved, non-leave timesheets by employee_id.
+        Timesheets are selected by Date (yyyy-mm-dd) between start_date and end_date.
         """
         timesheets = self.resource('Timesheet', join=['OperationalUnitObject'])
         students = Counter()
@@ -623,13 +629,19 @@ class College(Deputy):
             students.count(employee_id, 'timesheet')
         return students
 
-    def student_roster_count(self, location_name):
+    def student_roster_count(self, location_name, start_date=None, end_date=None):
         """
         Return a count of approved, non-leave timesheets by Employee for the selected location.
         Employee may be for an inactive employee.
         Employee is ignored if it is zero.
+        Rosters are selected by Date (yyyy-mm-dd) between start_date and end_date.
         """
-        rosters = self.resource('Roster', join=['OperationalUnitObject'], select=[('Employee', 'ne',  0)])
+        rosters = self.resource('Roster', join=['OperationalUnitObject'], 
+            select=[
+                ('Employee', 'ne',  0),
+                ('Date', 'ge',  start_date),
+                ('Date', 'le',  end_date)
+            ])
         students = Counter()
         students.add_counter('rostered',  'Rosters Rostered')
         students.add_counter('completed', 'Rosters Completed')
@@ -655,10 +667,11 @@ class College(Deputy):
             self.stats.append(self.Stat(*total))
         return students
 
-    def student_report(self, obligation_by_year, location_name):
+    def student_report(self, obligation_by_year, location_name, start_date=None, end_date=None):
         """
         Student roster data.
         Timesheet data exists but is not currently used.
+        Rosters are selected by Date between start_date and end_date.
         """
  
         # fetch student.Id, student.Name, and student.Year
@@ -668,7 +681,7 @@ class College(Deputy):
         #student_timesheet_count = self.student_timesheet_count(location_name)
 
         # count 'rostered', 'completed', 'open' rosters
-        student_roster_count = self.student_roster_count(location_name)
+        student_roster_count = self.student_roster_count(location_name, start_date=start_date, end_date=end_date)
         roster_stats = self.stats
         #print(json.dumps(roster_stats, indent=4, separators=(',', ': ')))
         
@@ -777,6 +790,10 @@ if __name__ == '__main__':
     parser.add_argument('--mobile',         help='Include Mobile phone number in the Deputy CSV file', action='store_true')
     parser.add_argument('--csv',            help='Format output as CSV',  action='store_true')
     parser.add_argument('--hide_ok',        help='In report, hide if no problems.', action='store_true')
+    parser.add_argument('--start',          help='Start date for date based resources',
+        default=get_config(config, 'REPORT', 'start_date', missing=None))
+    parser.add_argument('--end',            help='End date for date based resources',
+        default=get_config(config, 'REPORT', 'end_date', missing=None))
     args = parser.parse_args()
 
     # All exceptions are fatal. API errors are displayed in the except statement.
@@ -846,14 +863,14 @@ if __name__ == '__main__':
             p.stats(college)
 
         elif args.command == 'journal':
-            p.text('Journal Entries.\n')
+            p.text('Journal Entries ({} to {}).\n'.format(args.start, args.end))
             p.headers('Date', 'Name', 'Email', 'Category', 'Comment', 'Creator')
-            for e in college.deputy_journal_entries():
+            for e in college.deputy_journal_entries(start_date=args.start, end_date=args.end):
                 p.data('[{0}] {1} ({2}) [{3}] {4} (by {5})', e.Date, e.Name, e.Email, e.Category, e.Comment, e.Creator)
             p.stats(college)
 
         elif args.command == 'report':
-            p.text('Student compliance report.\n')
+            p.text('Student compliance report ({} to {}).\n'.format(args.start, args.end))
 
             p.headers('Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', 
                 '% Rostered', '% Completed', 'Issues') # removed for now 'Timesheets'
@@ -867,7 +884,7 @@ if __name__ == '__main__':
                     'Year2': get_config(config, 'REPORT', 'shifts_year2'),
                     'Year3': get_config(config, 'REPORT', 'shifts_year3')}  
             location_name  = get_config(config, 'REPORT', 'location_name')
-            for student in college.student_report(shift_obligations, location_name):
+            for student in college.student_report(shift_obligations, location_name, start_date=args.start, end_date=args.end):
                 p.data('{0} ({1}): {2}, {3}, {4} {5} {6} {7} {8}', *student)
             p.stats(college)
 
@@ -888,10 +905,8 @@ if __name__ == '__main__':
         elif args.command == 'test':
             #pass
             location_name = get_config(config, 'REPORT', 'location_name')
-            y = college.student_roster_count(location_name)
             #y = college.student_years()
             #y = college.employees(key='Id', join=['ContactObject'])
-            print(json.dumps(y, sort_keys=True, indent=4, separators=(',', ': ')))
             print('{0} records returned.'.format(len(y)))
 
             #for employee in self.employees(join=['ContactObject']):

@@ -50,6 +50,8 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 |`add-year`|Extract the year level from `import_csv`||
 |`api`|`GET` an API and display the JSON result. Limitted to 500 results.|`--api`. The default is `me`. |
 |`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
+|`rd`|`GET` a resource API within the `start` and `end` dates and display the JSON result. All matching resource results are returned. This will generate a bad request if `Date` is not a valid field.|`--resource`. The default is `Employee`. |
+|`rc`|`GET` a resource API withthe creation date between the `start` and `end` dates and display the JSON result. All matching resource results are returned. This will generate a bad request if `Date` is not a valid field.|`--resource`. The default is `Employee`. |
 |`test`|Will execute the last test code I used. NOT RECOMMENDED unless you are playing with code!||
 
 ## Examples (deputy.py)
@@ -124,4 +126,4 @@ For example:
 [Schedule:221] Creator: John Smith (1)
 ```
 
-
+There are `start_date` and `end_date` configuration parameters and `--start` and `--end` command line parameters to select the `report` and `journal` commands.
