@@ -610,7 +610,11 @@ class College(Deputy):
         Return a count of approved, non-leave timesheets by employee_id.
         Timesheets are selected by Date (yyyy-mm-dd) between start_date and end_date.
         """
-        timesheets = self.resource('Timesheet', join=['OperationalUnitObject'])
+        timesheets = self.resource('Timesheet', join=['OperationalUnitObject'], 
+            select=[
+                ('Date', 'ge',  start_date),
+                ('Date', 'le',  end_date)
+            ])
         students = Counter()
         students.add_counter('timesheet', 'Timesheet')
         for id in timesheets:
@@ -741,15 +745,19 @@ class College(Deputy):
 if __name__ == '__main__':
     # all printing occurs here to allow the classes above to be independantly instantiated.
 
-    config_file = 'deputy.config'
+    config_file = '~/deputy.config'
     config = configparser.ConfigParser()
     config.read(os.path.expanduser(config_file))
 
-    def get_config(config, section, item, missing=None):
+    def get_config(config, section, item, missing=None, manditory=False):
         if section in config.sections():
             if item in config[section]:
                 return config[section][item]
-        return missing
+        if manditory:
+            print('[{}] {} not specified. Configure {}.'.format(section, item, config_file))
+            sys.exit(9)
+        else:
+            return missing
 
     import_csv     = get_config(config, 'IMPORT', 'import_csv', missing='import.csv')
     deputy_csv     = get_config(config, 'IMPORT', 'deputy_csv', missing='deputy.csv')
@@ -771,9 +779,9 @@ if __name__ == '__main__':
     # process the command line
     parser = argparse.ArgumentParser(description='Deputy Reporting and Utilities')
     parser.add_argument('-e', '--endpoint', help='API endpoint (override config file)',
-        default=get_config(config, 'DEPUTY', 'api_endpoint'))
+        default=get_config(config, 'DEPUTY', 'api_endpoint', manditory=True))
     parser.add_argument('-a', '--token',    help='Access Token (override config file)',
-        default=get_config(config, 'DEPUTY', 'access_token'))
+        default=get_config(config, 'DEPUTY', 'access_token', manditory=True))
     parser.add_argument('--import_csv',     help='Import CSV (override config file)',
         default=import_csv)
     parser.add_argument('--deputy_csv',     help='Deputy CSV output (override config file)',
@@ -782,7 +790,7 @@ if __name__ == '__main__':
         default=20, type=int)
     parser.add_argument('command',          help='command (e.g. status)',
         default='intro', nargs='?',
-        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'api', 'resource', 'test'])
+        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'api', 'resource', 'rd', 'rc', 'test'])
     parser.add_argument('--api',            help='View API',
         default='me')
     parser.add_argument('--resource',       help='View Response',
@@ -897,16 +905,40 @@ if __name__ == '__main__':
 
         elif args.command == 'resource':
             # e.g. python3 deputy.py resource --resource
-            p.text('Fetching resource...{0}', args.resource)
+            p.text('Fetching resource...{}', args.resource)
             api_resp = college.resource(args.resource)
+            print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+            print('{0} Resource records returned.'.format(len(api_resp)))
+
+        elif args.command == 'rd':
+            # e.g. python3 deputy.py resource --resource
+            p.text('Fetching resource by Date...{}, ({} to {})', args.resource, args.start, args.end)
+            api_resp = college.resource(args.resource, 
+                select=[
+                    ('Date', 'ge',  args.start),
+                    ('Date', 'le',  args.end)
+                ])
+            print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+            print('{0} Resource records returned.'.format(len(api_resp)))
+
+        elif args.command == 'rc':
+            # e.g. python3 deputy.py resource --resource
+            p.text('Fetching resource by Created date...{}, ({} to {})', args.resource, args.start, args.end)
+            api_resp = college.resource(args.resource, 
+                select=[
+                    ('Created', 'ge',  args.start),
+                    ('Created', 'le',  args.end)
+                ])
             print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
             print('{0} Resource records returned.'.format(len(api_resp)))
 
         elif args.command == 'test':
             #pass
             location_name = get_config(config, 'REPORT', 'location_name')
+            y = college.student_roster_count(location_name, start_date=args.start, end_date=args.end)
             #y = college.student_years()
             #y = college.employees(key='Id', join=['ContactObject'])
+            print(json.dumps(list(y), sort_keys=True, indent=4, separators=(',', ': ')))
             print('{0} records returned.'.format(len(y)))
 
             #for employee in self.employees(join=['ContactObject']):
