@@ -716,7 +716,12 @@ class College(Deputy):
             counts.count(id='roster_rostered_count',  increment=src['rostered'])
             counts.count(id='roster_completed_count', increment=src['completed'])
             counts.count(id='roster_open_count',      increment=src['open'])
-            obligation = int(obligation_by_year[student.Year])
+            try:
+                obligation = int(obligation_by_year[student.Year])
+            except KeyError:
+                print('Year Level data error ({}) for {}'.format(student.Year, student.Name))
+                print('Fix the error before proceeding.')
+                sys.exit(1)
             counts.count(id=student.Year)
             issues = ''
 
