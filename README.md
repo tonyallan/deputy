@@ -47,6 +47,7 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 |`report`|List users alphabetically, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
 |`journal`|List all journal entries.|`--csv` output CSV to stdout|
 |`user-csv`|Read from `import_csv` and write to `deputy.csv` in the correct format to allow bulk People creation.||
+|`delete-users`|Read users who are not in `import_csv` by setting `active = False`.||
 |`add-year`|Extract the year level from `import_csv` and add or update as a training record.||
 |`api`|`GET` an API and display the JSON result. Limitted to 500 results.|`--api`. The default is `me`. |
 |`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
