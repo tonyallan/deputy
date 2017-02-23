@@ -46,13 +46,17 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 |`list`|For all Active employee's, show alphabetically: Name, Year and Email. Year will be blank if Training doesn't contain Year1, Year2 or Year3.|`--csv` output CSV to stdout|
 |`report`|List users alphabetically, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
 |`journal`|List all journal entries.|`--csv` output CSV to stdout|
-|`user-csv`|Read from `import_csv` and write to `deputy.csv` (in the correct format to allow bulk People creation.||
-|`add-year`|Extract the year level from `import_csv`||
+|`user-csv`|Read from `import_csv` and write to `deputy.csv` in the correct format to allow bulk People creation.||
+|`add-year`|Extract the year level from `import_csv` and add or update as a training record.||
 |`api`|`GET` an API and display the JSON result. Limitted to 500 results.|`--api`. The default is `me`. |
 |`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
 |`rd`|`GET` a resource API within the `start` and `end` dates and display the JSON result. All matching resource results are returned. This will generate a bad request if `Date` is not a valid field.|`--resource`. The default is `Employee`. |
 |`rc`|`GET` a resource API with the creation date between the `start` and `end` dates and display the JSON result. All matching resource results are returned. This will generate a bad request if `Date` is not a valid field.|`--resource`. The default is `Employee`. |
 |`test`|Will execute the last test code I used. NOT RECOMMENDED unless you are playing with code!||
+
+### Notes
+
+1 Phone numbers are not added for user-csv because SMS messages cost too much for 300 students.
 
 ## Examples (deputy.py)
 

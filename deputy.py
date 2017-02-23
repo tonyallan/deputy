@@ -354,15 +354,19 @@ class College(Deputy):
         email =       row['OccupEmail']
         course =      row['Course']
         year_at_uni = row['YearatUni']
-        mobile =      row['MobilePhoneActual']
+        mobile =      row['MobilePhoneActual'].strip()
         name =        '{0} {1}'.format(first_name, last_name)
 
         # Fixup's to cater for poor quality and inconsistent input data.
 
         # Fix missing NetworkLogin (assume email is OK in this instance)
         if len(student_id) == 0:
-            student_id = email.split('@')[0]
-            messages.append('Missing NetworkLogin for {0}. Setting to {1} using email {2}.'.format(name, student_id, email))
+            if len(email) ==0:
+                student_id = None
+                messages.append('Missing NetworkLogin for {0}. Unable to set using email address.'.format(name))
+            else:
+                student_id = email.split('@')[0]
+                messages.append('Missing NetworkLogin for {0}. Setting to {1} using email {2}.'.format(name, student_id, email))
 
         # exclude some users
         if student_id in exclude:
@@ -380,10 +384,10 @@ class College(Deputy):
             if int(year_at_uni) > 3:
                 messages.append('Excluded {0} ({1}), Year at Uni {2} > 3 in course {3}.'.format(name, student_id, year_at_uni, course))
                 return (messages, None)
+            year = 'Year{0}'.format(year_at_uni)
         except ValueError:
-            messages.append('Missing YearatUni for {0} ({1}). Setting to 1.'.format(name, student_id, course))
-            year_at_uni = '1'
-        year = 'Year{0}'.format(year_at_uni)
+            messages.append('Missing YearatUni for {0} ({1}). Setting to blank.'.format(name, student_id, course))
+            year = ''
 
         # Exception due to invalid data
         if student_id == 'wzheng':
@@ -438,9 +442,12 @@ class College(Deputy):
         Add the student year level as a training module for each student found in the import_csv file.
         A training module is used because it is conveniently placed in the Deputy UI for Employee's.
 
-        The year level will NOT BE ADDED if the student already has a year level assigned.
+        The year level will NOT BE ADDED if the student already has the correct year level assigned.
+        If the year level is wrong, it will be deleted and the correct one added.
 
         student_years = {employee_id: year_text}. For example, year_text=Year2
+
+        Anyone excluded by parse_student_record() will NOT be updated, e.g. TCAC members and co-ordinators
 
         Returns an array of processing messages.
 
@@ -462,6 +469,7 @@ class College(Deputy):
             parsed_row = self.parse_student_record(in_row)[1]
             if parsed_row is None:
                 continue
+
             email = parsed_row['email']
             name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
 
@@ -476,10 +484,16 @@ class College(Deputy):
 
             year = parsed_row['year']
 
-            # dont add year if one already exists
+            # dont add year if one already exists and is the correct year
+            print(employee_id, employee_id in student_years, student_years[employee_id][0], year)
             if employee_id in student_years:
-                already_count += 1
-                continue
+                if student_years[employee_id][0] == year:
+                    already_count += 1
+                    continue
+                else:
+                    # remove incorrect year
+                    api_resp = college.api('resource/TrainingRecord/{0}'.format(student_years[employee_id][1]), method='DELETE')
+                    messages.append('Deleted old year: {0}'.format(api_resp))
 
             training_module = years[year]
             messages.append('Student {0} ({1}) is in {2}'.format(name, employee_id, year))
@@ -501,6 +515,58 @@ class College(Deputy):
         messages.append('{0} students already had a year level set.'.format(already_count))
         messages.append('Added year level to {0} students.'.format(added_count))
         return messages
+
+    def delete_users(self, employees_by_email, student_years, import_csv, test=True):
+        """
+        Delete (i.e. set active to false) any student who is not in import_csv.
+
+        The student to be deleted must:
+        - be an employee !
+        -- must not be in input_csv (student_by_email)
+        -- must have a Year1/Year2/Year3 training record
+
+
+        Returns an array of processing messages.
+
+        May raise DeputyException.
+        """
+        messages = []
+
+        in_csv  = open(import_csv)
+        reader = csv.DictReader(in_csv)
+
+        deleted_count = 0
+
+        # Get a list of students
+        student_by_email = {}
+        for in_row in reader:
+            # parse record but discard any messages
+            parsed_row = self.parse_student_record(in_row)[1]
+            if parsed_row is None:
+                continue
+
+            email = parsed_row['email']
+            name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
+            student_by_email[email] = name
+
+        for employee_email in employees_by_email:
+            if employee_email not in student_by_email: 
+                student = employees_by_email[employee_email]
+                student_id = student['Id']
+                student_name = student['DisplayName']
+                if student_id in student_years:
+                    #print(student_id, student_name, student_years[student_id][0])
+                    #print(json.dumps(student, sort_keys=True, indent=4, separators=(',', ': ')))
+                    messages.append('Deleted student: {0} {1}'.format(student_name, student_id))
+                    api_resp = college.api('resource/Employee/{0}'.format(student_id), method='POST', data={'Active': False})
+                    messages.append('API response: {0}'.format(api_resp))
+                    deleted_count += 1
+
+        self.stats = None
+        messages.append('Processed {0} students.'.format(len(student_by_email)))
+        messages.append('{0} students deleted.'.format(deleted_count))
+        return messages
+
 
     def years(self):
         """
@@ -524,7 +590,7 @@ class College(Deputy):
         """
         This is a college specific method.
         Return a hash of year levels for each student (EmployeeId) who has a year assigned:
-            [{employee_id:year_level}]
+            [{employee_id:(year_level, training_record_id)}]
         Assumes only one year per student.
 
         May raise DeputyException.
@@ -539,7 +605,7 @@ class College(Deputy):
         api_resp = self.api('resource/TrainingRecord')
         for record in api_resp:
             if record['Module'] in year_list:
-                training_records[record['Employee']] = year_list[record['Module']]
+                training_records[record['Employee']] = (year_list[record['Module']], record['Id'])
         self.stats = [self.Stat('training_records', 'Training Records', len(training_records))]
         return training_records
 
@@ -549,14 +615,15 @@ class College(Deputy):
         A Bursary Student is an employee who has a training record that includes Year1/2/3.
         """
         students = self.employees(join=['ContactObject'])
-        student_years = self.student_years()
+        student_years = self.student_years()        # e.g. for each student "709": ["Year3",7]
+
         Student = collections.namedtuple('Student', ['Id', 'Name', 'Year', 'Email'])
         result = []
         for student_id in students:
             student = students[student_id]
             name = student['DisplayName']
             if student_id in student_years:
-                year = student_years[student_id]
+                year = student_years[student_id][0]
             else:
                 continue
             email_address = student['ContactObject']['Email']
@@ -795,7 +862,7 @@ if __name__ == '__main__':
         default=20, type=int)
     parser.add_argument('command',          help='command (e.g. status)',
         default='intro', nargs='?',
-        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'api', 'resource', 'rd', 'rc', 'test'])
+        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'delete-users', 'api', 'resource', 'rd', 'rc', 'test'])
     parser.add_argument('--api',            help='View API',
         default='me')
     parser.add_argument('--resource',       help='View Response',
@@ -817,12 +884,14 @@ if __name__ == '__main__':
         api_resp = college.api('me')        
 
         if args.command == 'intro':
+            # Print helpful documentation
             p.text('DeputyVersion: {0} running as {1}.\n', api_resp['DeputyVersion'], api_resp['Name'])
             p.text('A script to invoke the Deputy API''s. Use --help to see a list of commands.')
             p.text('For more information, see https://github.com/tonyallan/deputy/\n')
             p.text('For a list of commands use --help')
 
         elif args.command == 'config':
+            # List the contents of the configuration file (usually just a test to see if the config file can be read)
             p.text('DeputyVersion: {0} running as {1}.\n', api_resp['DeputyVersion'], api_resp['Name'])
             p.text('Using config file ({0})', os.path.abspath(config_file))
             for section in config.sections():
@@ -831,8 +900,14 @@ if __name__ == '__main__':
                     p.text('    {0:14}= {1}', item, config[section][item])
 
         elif args.command == 'user-csv':
+            # Read from `import_csv` and write to `deputy.csv` in the correct format to allow bulk People creation.
             in_csv  = open(args.import_csv)
-            out_csv = open(args.deputy_csv, 'w')
+            out_csv = open(args.deputy_csv, 'w', newline='')
+
+            # get a list of student email addresses so we can remove already added users
+            email_list = []
+            for s in college.bursary_student_list():
+                email_list.append(s.Email)
 
             reader = csv.DictReader(in_csv)
             writer = csv.DictWriter(out_csv, fieldnames=college.DEPUTY_COLS)
@@ -842,15 +917,25 @@ if __name__ == '__main__':
             year_count = {'Year1': 0, 'Year2': 0, 'Year3':0}
             for in_row in reader:
                 (messages, parsed_row) = college.parse_student_record(in_row, args.mobile)
+                # parsed_row contains: first_name, last_name, student_id (i.e. NetworkLogin), email, year, mobile
                 if parsed_row is not None:
                     if len(messages) > 0:
                         p.text('\n'.join(messages))
+                    if parsed_row['email'] in email_list:
+                        p.text('Ignoring user already in deputy: {0} {1} ({2})', parsed_row['first_name'], parsed_row['last_name'], parsed_row['email'])
+                        continue
+                    if len(parsed_row['year']) == 0:
+                        p.text('Ignoring user without a Year level: {0} {1} ({2})', parsed_row['first_name'], parsed_row['last_name'], parsed_row['email'])
+                        continue
+                    if len(parsed_row['student_id']) == 0:
+                        p.text('Ignoring user without a student_id: {0} {1} ({2})', parsed_row['first_name'], parsed_row['last_name'], parsed_row['email'])
+                        continue
                     new_row = {
                         'First Name':       parsed_row['first_name'],
                         'Last Name':        parsed_row['last_name'],
                         'Time Card Number': parsed_row['student_id'],
                         'Email':            parsed_row['email'],
-                        'Mobile Number':    parsed_row['mobile'],
+                        'Mobile Number':    '', #parsed_row['mobile'], ## SMS messages cost too much so don't add a phone number.
                         }
                     writer.writerow(new_row)
                     year_count[parsed_row['year']] += 1
@@ -860,7 +945,7 @@ if __name__ == '__main__':
             p.text('Processed {0} students.', count)
 
         elif args.command == 'add-year':
-            p.text('Add year level as a TrainingRecord for each student.')
+            p.text('Add (or update) year level as a TrainingRecord for each student.')
             p.text('Fetching years...')
             years = college.years()
             p.text('Fetching training records (for year)...')
@@ -868,7 +953,19 @@ if __name__ == '__main__':
             messages = college.add_years_to_student_records(years, student_years, import_csv)
             p.text('\n'.join(messages))
 
+        elif args.command == 'delete-users':
+            p.text('Remove students not in import_csv.')
+            p.text('Fetching employee records...')
+            students = college.employee_by_email()
+            p.text('Fetching training records (for year)...')
+            student_years = college.student_years()
+            messages = college.delete_users(students, student_years, import_csv)
+            # ToDo: fix KeyError: "'EmergencyAddress'" in the line below @line 261
+            p.text('\n'.join(messages))
+
         elif args.command == 'list':
+            # For all Active employee's, show alphabetically: Name, Year and Email. 
+            # Year will be blank if Training doesn't contain Year1, Year2 or Year3.
             p.text('List of Bursary Students and their year level and email.\n')
             p.headers('Id', 'Name', 'Year', 'Email')
             for s in college.bursary_student_list():
@@ -939,12 +1036,19 @@ if __name__ == '__main__':
 
         elif args.command == 'test':
             #pass
-            location_name = get_config(config, 'REPORT', 'location_name')
-            y = college.student_roster_count(location_name, start_date=args.start, end_date=args.end)
+            
+            #location_name = get_config(config, 'REPORT', 'location_name')
+            #y = college.student_roster_count(location_name, start_date=args.start, end_date=args.end)
+            
             #y = college.student_years()
             #y = college.employees(key='Id', join=['ContactObject'])
-            print(json.dumps(list(y), sort_keys=True, indent=4, separators=(',', ': ')))
-            print('{0} records returned.'.format(len(y)))
+
+            api_resp = college.student_years()
+            print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+            sys.exit(0)
+            
+            #print(json.dumps(list(y), sort_keys=True, indent=4, separators=(',', ': ')))
+            #print('{0} records returned.'.format(len(y)))
 
             #for employee in self.employees(join=['ContactObject']):
             #    email_address = employee['ContactObject']['Email']
@@ -960,6 +1064,20 @@ if __name__ == '__main__':
             #    if r['Comment'] is not None:
             #        if len(r['Comment']) > 0:
             #            print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            #api_resp = college.student_years()
+            ##print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+            #for r in api_resp:
+            #    if r == 504:
+            #        print(json.dumps(api_resp[r], sort_keys=True, indent=4, separators=(',', ': ')))
+            #print(len(api_resp))
+
+            ##DELETE /resource/:object/:id
+            #api_resp = college.api('resource/TrainingRecord/321', method='DELETE')
+            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            #api_resp = college.api('resource/Employee/504', method='POST', data={'Active': False})
+            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
 
 
     except DeputyException as e:
