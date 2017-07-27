@@ -28,7 +28,7 @@ Copy the value to `access_token`.
 
 [deputy.config](deptuty.config) shows all available configuration options.
 
-You can view the configuration (and test correct authorisation) by running hte script in the same folder as the configuration file:
+You can view the configuration (and test correct authorisation) by running the script in the same folder as the configuration file:
 ```
 python3 deputy.py config
 ```
