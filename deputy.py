@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2016 Tony Allan
+# Copyright (c) 2016-2018 Tony Allan
 
 # This script is all a bit of a hack.
 # Some effort has been made to put communication with the Deputy api into the Deputy class.
@@ -8,6 +8,8 @@
 # The script can be used to:
 # - convert the CSV file from Synergetic to a Duputy CSV useful for importing employee's into Deputy.
 # - add a year level for each student using the training module employee field to conveniently store the data.
+
+# https://www.deputy.com/api-doc/API
 
 import argparse
 import collections
@@ -213,6 +215,7 @@ class Deputy(object):
             api_resp = self.api('resource/{0}/QUERY'.format(resource_name), method='POST', data=query)
             for record in api_resp:
                 result[record[key]] = record
+            #print(len(api_resp), resource_name, position)
             if len(api_resp) == window:
                 position += window
             else:
@@ -237,6 +240,30 @@ class Deputy(object):
         for id in employees:
             employee = employees[id]
             email_address = employee['ContactObject']['Email']
+            email_employees[email_address] = employee
+        return email_employees
+
+    def discarded_employees(self, key='Id', sort='LastName', join=[]):
+        """
+        Return OrderedDict of Active employees sorted by LastName.
+        May raise DeputyException.
+        """
+        return self.resource('Employee', key=key, sort=sort, join=join, select=[('Active', 'eq',  False)])
+
+    def discarded_employee_by_email(self):
+        """
+        Return an OrderedDict of employee's with email as the key.
+        May raise DeputyException.
+        """
+        employees = self.discarded_employees(join=['ContactObject'])
+        #print(json.dumps(employees, sort_keys=True, indent=4, separators=(',', ': ')))
+        email_employees = collections.OrderedDict()
+        for id in employees:
+            employee = employees[id]
+            try:
+                email_address = employee['ContactObject']['Email']
+            except KeyError:
+                print('Could no process {} (id={})'.format(employee['DisplayName'], employee['Id']))
             email_employees[email_address] = employee
         return email_employees
 
@@ -272,9 +299,9 @@ class Printx(object):
         else:
             self.text(text, *values)
 
-    def stats(self, deputy):
+    def stats(self, c):
         self.text('')
-        for stat in deputy.stats:
+        for stat in c.stats:
             self.text('{0}: {1}', stat.text, stat.value)
 
 
@@ -292,7 +319,7 @@ class College(Deputy):
 
     def __init__(self, endpoint, token, timeout):
         # A function may also return some statistics.
-        self.stats = None
+        self.stats = []
         self.Stat = collections.namedtuple('Stat', ['id', 'text', 'value'])
         super().__init__(endpoint, token, timeout)
 
@@ -350,11 +377,11 @@ class College(Deputy):
 
         first_name =  row['Preferred']
         last_name =   row['Surname']
-        student_id =  row['NetworkLogin']
-        email =       row['OccupEmail']
-        course =      row['Course']
-        year_at_uni = row['YearatUni']
-        mobile =      row['MobilePhoneActual'].strip()
+        student_id =  row['Network Login']
+        email =       row['Trinity Email']
+        course =      row['Course Description']
+        year_at_uni = row['UOMYear']
+        mobile =      row['Mobile Phone'].strip()
         name =        '{0} {1}'.format(first_name, last_name)
 
         # Fixup's to cater for poor quality and inconsistent input data.
@@ -379,6 +406,9 @@ class College(Deputy):
                 messages.append('Excluded {0} ({1}) for Post Grad course {2}.'.format(name, student_id, course))
                 return (messages, None)
 
+        # year_at_uni data contains "4 Years" and "1 Year"
+        year_at_uni = year_at_uni.split(' ')[0]
+
         # year 1,2,3 assignment        
         try:
             if int(year_at_uni) > 3:
@@ -388,11 +418,6 @@ class College(Deputy):
         except ValueError:
             messages.append('Missing YearatUni for {0} ({1}). Setting to blank.'.format(name, student_id, course))
             year = ''
-
-        # Exception due to invalid data
-        if student_id == 'wzheng':
-            messages.append('Fixup for {0} ({1}). Setting year to 3.'.format(name, student_id))
-            year = 'Year3'
 
         # fix Mobile phone number
         if len(mobile) == 0:
@@ -442,8 +467,8 @@ class College(Deputy):
         Add the student year level as a training module for each student found in the import_csv file.
         A training module is used because it is conveniently placed in the Deputy UI for Employee's.
 
-        The year level will NOT BE ADDED if the student already has the correct year level assigned.
-        If the year level is wrong, it will be deleted and the correct one added.
+        The year level will not be changed if it is correct. It will be changed if it is different in 
+        the CSV. It will be added if currently not specified.
 
         student_years = {employee_id: year_text}. For example, year_text=Year2
 
@@ -485,7 +510,7 @@ class College(Deputy):
             year = parsed_row['year']
 
             # dont add year if one already exists and is the correct year
-            print(employee_id, employee_id in student_years, student_years[employee_id][0], year)
+            #print(employee_id, employee_id in student_years, student_years[employee_id][0], year)
             if employee_id in student_years:
                 if student_years[employee_id][0] == year:
                     already_count += 1
@@ -509,7 +534,6 @@ class College(Deputy):
             api_resp = self.api('resource/TrainingRecord', method='POST', data=data)
             added_count += 1
 
-        self.stats = None
         messages.append('Processed {0} students.'.format(count))
         messages.append('{0} students not found in Deputy.'.format(not_found_count))
         messages.append('{0} students already had a year level set.'.format(already_count))
@@ -521,10 +545,9 @@ class College(Deputy):
         Delete (i.e. set active to false) any student who is not in import_csv.
 
         The student to be deleted must:
-        - be an employee !
+        -- be an employee !
         -- must not be in input_csv (student_by_email)
         -- must have a Year1/Year2/Year3 training record
-
 
         Returns an array of processing messages.
 
@@ -562,11 +585,58 @@ class College(Deputy):
                     messages.append('API response: {0}'.format(api_resp))
                     deleted_count += 1
 
-        self.stats = None
         messages.append('Processed {0} students.'.format(len(student_by_email)))
         messages.append('{0} students deleted.'.format(deleted_count))
         return messages
 
+    def reinstate_users(self, employees_by_email, student_years, import_csv, test=True):
+        """
+        Reinstate (i.e. set active to true) any student who is in import_csv.
+
+        The student to be reinstated must:
+        -- be an employee !
+        -- must be in input_csv (student_by_email)
+        -- must have a Year1/Year2/Year3 training record
+
+        Returns an array of processing messages.
+
+        May raise DeputyException.
+        """
+        messages = []
+
+        in_csv  = open(import_csv)
+        reader = csv.DictReader(in_csv)
+
+        reinstated_count = 0
+
+        # Get a list of students
+        student_by_email = {}
+        for in_row in reader:
+            # parse record but discard any messages
+            parsed_row = self.parse_student_record(in_row)[1]
+            if parsed_row is None:
+                continue
+
+            email = parsed_row['email']
+            name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
+            student_by_email[email] = name
+
+        for employee_email in employees_by_email:
+            if employee_email in student_by_email: 
+                student = employees_by_email[employee_email]
+                student_id = student['Id']
+                student_name = student['DisplayName']
+                if student_id in student_years:
+                    #print(student_id, student_name, student_years[student_id][0])
+                    #print(json.dumps(student, sort_keys=True, indent=4, separators=(',', ': ')))
+                    messages.append('Reinstated student: {0} {1}'.format(student_name, student_id))
+                    api_resp = college.api('resource/Employee/{0}'.format(student_id), method='POST', data={'Active': True})
+                    messages.append('API response: {0}'.format(api_resp))
+                    reinstated_count += 1
+
+        messages.append('Processed {0} students.'.format(len(student_by_email)))
+        messages.append('{0} students reinstated.'.format(reinstated_count))
+        return messages
 
     def years(self):
         """
@@ -578,12 +648,17 @@ class College(Deputy):
 
         May raise DeputyException.
         """
-        api_resp = self.api('resource/TrainingModule')
+        api_resp = self.resource('TrainingModule')
         years = {}
-        for tm in api_resp:
+        for tmi in api_resp:
+            tm = api_resp[tmi]
+            if tm['Title'] =='Year 3':
+                # ignore historical error
+                continue
             if tm['Title'].startswith('Year'):
                 years[tm['Title']] = tm['Id']
-        self.stats = [self.Stat('years', 'Years', len(years))]
+        #self.stats.append(self.Stat('Training Modules', 'Training Modules', len(api_resp)))
+        self.stats.append(self.Stat('years', 'Years', len(years)))
         return years
 
     def student_years(self):
@@ -602,11 +677,13 @@ class College(Deputy):
             year_list[years[year]] = year
 
         training_records = {}
-        api_resp = self.api('resource/TrainingRecord')
-        for record in api_resp:
+        api_resp = self.resource('TrainingRecord')
+        for record_i in api_resp:
+            record = api_resp[record_i]
             if record['Module'] in year_list:
                 training_records[record['Employee']] = (year_list[record['Module']], record['Id'])
-        self.stats = [self.Stat('training_records', 'Training Records', len(training_records))]
+        self.stats.append(self.Stat('training_records', 'Training Records', len(api_resp)))
+        self.stats.append(self.Stat('training_records_wm', 'Training Records (with Module)', len(training_records)))
         return training_records
 
     def bursary_student_list(self):
@@ -619,20 +696,25 @@ class College(Deputy):
 
         Student = collections.namedtuple('Student', ['Id', 'Name', 'Year', 'Email'])
         result = []
+        no_year_count = 0
+        no_student_years = 0
         for student_id in students:
             student = students[student_id]
             name = student['DisplayName']
             if student_id in student_years:
                 year = student_years[student_id][0]
             else:
+                no_student_years += 1
                 continue
             email_address = student['ContactObject']['Email']
-            if year is not None:
+            if year is None:
+                no_year_count += 1
+            else:
                 result.append(Student(student_id, name, year, email_address))
-        self.stats = [
-            self.Stat('students', 'Students', len(students)),
-            self.Stat('bursary_students', 'Bursary Students', len(result))
-            ]
+        self.stats.append(self.Stat('students', 'Active Deputy Employees', len(students)))
+        self.stats.append(self.Stat('no_year_count', 'Employees with no Year', no_year_count))
+        self.stats.append(self.Stat('no_student_years', 'Student not in student_years', no_student_years))
+        self.stats.append(self.Stat('bursary_students', 'Bursary Students', len(result)))
         return result
 
     def deputy_journal_entries(self, start_date=None, end_date=None):
@@ -669,7 +751,7 @@ class College(Deputy):
                 else:
                     creator = ''
             result.append(Journal(date, name, email, category, comment, creator))
-        self.stats = [self.Stat('journal_entries', 'Journal Entries', len(result))]
+        self.stats.append(self.Stat('journal_entries', 'Journal Entries', len(result)))
         return result
 
     def student_timesheet_count(self, location_name, start_date=None, end_date=None):
@@ -730,10 +812,8 @@ class College(Deputy):
                 students.count(employee_id, 'completed')
             if roster['Open']:
                 students.count(employee_id, 'open')
-        self.stats = [
-            self.Stat('rosters',   'Rosters (for all locations)',   len(rosters)),
-            self.Stat('students',  'Rosters with Students',  len(students))
-        ]
+        self.stats.append(self.Stat('rosters',   'Rosters (for all locations)',   len(rosters)))
+        self.stats.append(self.Stat('students',  'Rosters with Students',  len(students)))
         for total in students.get_totals():
             self.stats.append(self.Stat(*total))
         return students
@@ -804,9 +884,8 @@ class College(Deputy):
                 percentage_complete, issues)) # removed stc['timesheet']
 
         # and some summary info
-        self.stats = []
         self.stats.append(self.Stat('student_bursary', 'Bursary Students', len(students)))
-        #self.stats.append(self.Stat('student_timesheet', 'Students with Timesheets', len(student_timesheet_count)))
+        #self.stats.append(self.stats.append(self.Stat('student_timesheet', 'Students with Timesheets', len(student_timesheet_count))))
         self.stats.append(self.Stat('student_roster', 'Students with Rosters', len(student_roster_count)))
         for total in counts.get_totals():
             self.stats.append(self.Stat(*total))
@@ -862,7 +941,7 @@ if __name__ == '__main__':
         default=20, type=int)
     parser.add_argument('command',          help='command (e.g. status)',
         default='intro', nargs='?',
-        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'delete-users', 'api', 'resource', 'rd', 'rc', 'test'])
+        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'delete-users', 'reinstate-users', 'api', 'resource', 'rd', 'rc', 'test'])
     parser.add_argument('--api',            help='View API',
         default='me')
     parser.add_argument('--resource',       help='View Response',
@@ -950,7 +1029,7 @@ if __name__ == '__main__':
             years = college.years()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.add_years_to_student_records(years, student_years, import_csv)
+            messages = college.add_years_to_student_records(years, student_years, args.import_csv)
             p.text('\n'.join(messages))
 
         elif args.command == 'delete-users':
@@ -959,8 +1038,22 @@ if __name__ == '__main__':
             students = college.employee_by_email()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.delete_users(students, student_years, import_csv)
+            messages = college.delete_users(students, student_years, args.import_csv)
             # ToDo: fix KeyError: "'EmergencyAddress'" in the line below @line 261
+            # ToDo: fix KeyError: "'PostalAddress'"
+            # Todo: fix KeyError: "'Id'"
+            print('zzz', messages)
+            p.text('\n'.join(messages))
+
+        elif args.command == 'reinstate-users':
+            p.text('Reinstate previously discarded students in import_csv.')
+            p.text('Fetching employee records...')
+            students = college.discarded_employee_by_email()
+            p.text('Fetching training records (for year)...')
+            student_years = college.student_years()
+            messages = college.reinstate_users(students, student_years, args.import_csv)
+            # ToDo: fix KeyError: "'EmergencyAddress'" in the line below @line 261
+            # ToDo: fix KeyError: "'PostalAddress'"
             p.text('\n'.join(messages))
 
         elif args.command == 'list':
@@ -1043,9 +1136,9 @@ if __name__ == '__main__':
             #y = college.student_years()
             #y = college.employees(key='Id', join=['ContactObject'])
 
-            api_resp = college.student_years()
-            print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
-            sys.exit(0)
+            # api_resp = college.student_years()
+            # print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+            # sys.exit(0)
             
             #print(json.dumps(list(y), sort_keys=True, indent=4, separators=(',', ': ')))
             #print('{0} records returned.'.format(len(y)))
@@ -1076,9 +1169,24 @@ if __name__ == '__main__':
             #api_resp = college.api('resource/TrainingRecord/321', method='DELETE')
             #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
 
-            #api_resp = college.api('resource/Employee/504', method='POST', data={'Active': False})
+            #api_resp = college.api('resource/Employee/845', method='POST', data={'Active': False})
             #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
 
+            #students = college.discarded_employee_by_email()
+
+            #api_resp = college.api('resource/Employee/845')
+            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            #api_resp = college.api('resource/Employee/845', method='DELETE')
+            #print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            #student_years = college.student_years()
+            #print(json.dumps(student_years, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            api_resp = college.resource('TrainingModule')
+            print(json.dumps(api_resp, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            pass
 
     except DeputyException as e:
         print(str(e))
