@@ -282,10 +282,13 @@ class Printx(object):
 
     def text(self, text, *values):
         # if csv, write text to stderr because stdout is used for the csv output
-        if self.csv:
-            print(text.format(*values), file=sys.stderr)
-        else:
-            print(text.format(*values))
+        try:
+            if self.csv:
+                print(text.format(*values), file=sys.stderr)
+            else:
+                print(text.format(*values))
+        except KeyError:
+            print('[Keyerror]', text, str(*values))
 
     def headers(self, *values):
         # only write a header if CSV output is required.
@@ -540,7 +543,7 @@ class College(Deputy):
         messages.append('Added year level to {0} students.'.format(added_count))
         return messages
 
-    def delete_users(self, employees_by_email, student_years, import_csv, test=True):
+    def delete_users(self, employees_by_email, student_years, import_csv, use_csv=True, test=True):
         """
         Delete (i.e. set active to false) any student who is not in import_csv.
 
@@ -552,25 +555,28 @@ class College(Deputy):
         Returns an array of processing messages.
 
         May raise DeputyException.
+
+        if use_csv is False then don't check students in the CSV file. Useful for end of year processing.
         """
         messages = []
 
-        in_csv  = open(import_csv)
-        reader = csv.DictReader(in_csv)
-
         deleted_count = 0
 
-        # Get a list of students
         student_by_email = {}
-        for in_row in reader:
-            # parse record but discard any messages
-            parsed_row = self.parse_student_record(in_row)[1]
-            if parsed_row is None:
-                continue
 
-            email = parsed_row['email']
-            name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
-            student_by_email[email] = name
+        if use_csv:
+            in_csv  = open(import_csv)
+            reader = csv.DictReader(in_csv)
+
+            for in_row in reader:
+                # parse record but discard any messages
+                parsed_row = self.parse_student_record(in_row)[1]
+                if parsed_row is None:
+                    continue
+
+                email = parsed_row['email']
+                name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
+                student_by_email[email] = name
 
         for employee_email in employees_by_email:
             if employee_email not in student_by_email: 
@@ -941,7 +947,8 @@ if __name__ == '__main__':
         default=20, type=int)
     parser.add_argument('command',          help='command (e.g. status)',
         default='intro', nargs='?',
-        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 'delete-users', 'reinstate-users', 'api', 'resource', 'rd', 'rc', 'test'])
+        choices=['intro', 'config', 'list', 'report', 'journal', 'user-csv', 'add-year', 
+                 'delete-users', 'delete-123-users', 'reinstate-users', 'api', 'resource', 'rd', 'rc', 'test'])
     parser.add_argument('--api',            help='View API',
         default='me')
     parser.add_argument('--resource',       help='View Response',
@@ -1038,11 +1045,19 @@ if __name__ == '__main__':
             students = college.employee_by_email()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.delete_users(students, student_years, args.import_csv)
+            messages = college.delete_users(students, student_years, args.import_csv, use_csv=True)
             # ToDo: fix KeyError: "'EmergencyAddress'" in the line below @line 261
             # ToDo: fix KeyError: "'PostalAddress'"
             # Todo: fix KeyError: "'Id'"
-            print('zzz', messages)
+            p.text('\n'.join(messages))
+
+        elif args.command == 'delete-123-users':
+            p.text('Remove all users with a training record that includes Year1/2/3.')
+            p.text('Fetching employee records...')
+            students = college.employee_by_email()
+            p.text('Fetching training records (for year)...')
+            student_years = college.student_years()
+            messages = college.delete_users(students, student_years, args.import_csv, use_csv=False)
             p.text('\n'.join(messages))
 
         elif args.command == 'reinstate-users':
