@@ -1211,7 +1211,10 @@ if __name__ == '__main__':
             ignored = 0
             year_count = {'Year1': 0, 'Year2': 0, 'Year3':0, 'Year1NR': 0}
             for in_row in reader:
-                (messages, parsed_row) = college.parse_student_record(in_row, args.mobile)
+                try:
+                    (messages, parsed_row) = college.parse_student_record(in_row, args.mobile)
+                except KeyError as e:
+                    sys.exit(f'Fatal Error. Missing import_csv header row: {e}. Check for extra space characters.')
                 # parsed_row contains: first_name, last_name, student_id (i.e. NetworkLogin), email, year, mobile
                 if len(messages) > 0:
                    p.text('\n'.join(messages))
@@ -1540,8 +1543,6 @@ if __name__ == '__main__':
 
             print(data)
             print('\nLength of data', len(api_resp))
-
-
 
 
     except DeputyException as e:

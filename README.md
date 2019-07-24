@@ -45,9 +45,12 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 |`config`|List the contents of the configuration file (usually just a test to see if the config file can be read)||
 |`list`|For all Active employee's, show alphabetically: Name, Year and Email. Year will be blank if Training doesn't contain Year1, Year2 or Year3.|`--csv` output CSV to stdout|
 |`report`|List users alphabetically, showing all or some of 'Name', 'Year', 'Obligation', 'Rostered', 'Open', 'Completed', '% Rostered', '% Completed', 'Timesheets', 'Issues'|`--csv` output CSV to stdout; `--mobile` include a mobile phone number in the output CSV file.|
+|`sync`|Synchronise Deputy user timesheet and shift data with a Google Sheet. Used in conjunction with [repl.it](https://repl.it)||
 |`journal`|List all journal entries.|`--csv` output CSV to stdout|
 |`user-csv`|Read from `import_csv` and write to `deputy.csv` in the correct format to allow bulk People creation.||
 |`delete-users`|Delete users who are not in `import_csv` by setting `active = False`.||
+|`delete-123-users`|Remove all users with a training record that includes Year1/2/3/1NR.||
+|`reinstate-users`|Reinstate previously discarded students in import_csv.||
 |`add-year`|Extract the year level from `import_csv` and add or update (if an old value is in Deputy) as a training record.||
 |`api`|`GET` an API and display the JSON result. Limitted to 500 results.|`--api`. The default is `me`. |
 |`resource`|`GET` a resource API and display the JSON result. All resource results are returned.|`--resource`. The default is `Employee`. |
@@ -57,7 +60,7 @@ DeputyVersion: 3.0.1 running as Service Account For API.
 
 ### Notes
 
-1 Phone numbers are not added for user-csv because SMS messages cost too much for 300 students.
+1 Phone numbers are no longer added for user-csv because SMS messages cost too much for 300 students.
 
 ## Examples (deputy.py)
 
