@@ -441,15 +441,16 @@ class College(Deputy):
                 return (messages, None)
 
         if year_at_uni == 'Not Selected':
-            messages.append('Excluded {0} ({1}), Year at Uni = Not Selected.'.format(name, student_id, year_at_uni, course))
+            # Make this a fatal error -- need to fix the data rather than ignore the student.
+            sys.exit('Fatal Error. {0} ({1}), Year at Uni = Not Selected.'.format(name, student_id, year_at_uni, course))
             year = None
         else:
 
-            # year_at_uni data contains "4 Years" and "1 Year"
-            year_at_uni = year_at_uni.split(' ')[0]
-
             # year 1,2,3,1NR assignment        
             try:
+                # year_at_uni data contains "4 Years" and "1 Year"
+                year_at_uni = year_at_uni.split(' ')[0]
+
                 if boarder == 'Non Res Special':
                     year ='Year1NR'
                 else:
@@ -457,9 +458,13 @@ class College(Deputy):
                         messages.append('Excluded {0} ({1}), Year at Uni {2} > 3 in course {3}.'.format(name, student_id, year_at_uni, course))
                         return (messages, None)
                     year = 'Year{0}'.format(year_at_uni)
+
             except ValueError:
                 messages.append('Missing UOMYear for {0} ({1}). Setting to blank.'.format(name, student_id, course))
                 year = None
+
+            except:
+                sys.exit('Fatal Error. Unknown value for UOMYear for {0} ({1}).'.format(name, student_id, course))
 
         # exclude postgrads
         for e in exclude_postgrad:
