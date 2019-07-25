@@ -8,6 +8,12 @@ These script is used by an educational institution where around 250 residental s
 * `deputy.py` Python3 script contains examples on how to invoke the API's.
 * `explore.py` Python3 script allows Deputy records related to an employee to be listed to help understand some of the Deputy data model.
 
+### Architecture and Process
+
+The following diagram shows how the script is used in pactice.
+
+![Architecture](architecture.jpg)
+
 ## Setup
 
 #### Minimal Configuration
