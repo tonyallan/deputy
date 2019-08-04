@@ -422,9 +422,13 @@ class College(Deputy):
 
         # Fixup's to cater for poor quality and inconsistent input data.
 
+        # Empty row in the spreadsheet
+        if len(first_name) + len(last_name) + len(student_id) == 0:
+            return (messages, None)
+
         # Fix missing NetworkLogin (assume email is OK in this instance)
         if len(student_id) == 0:
-            if len(email) ==0:
+            if len(email) == 0:
                 student_id = None
                 messages.append('Excluded {0} (Student ID: {1}) for Missing NetworkLogin and/or Trinity Email.'.format(name, synergetic_id))
                 return (messages, None)
@@ -517,7 +521,7 @@ class College(Deputy):
         return (messages, new_row)
 
 
-    def add_years_to_student_records(self, years, student_years, csv_reader):
+    def add_years_to_student_records(self, years, student_years, csv_reader, test=False):
         """
         Add the student year level as a training module for each student found in the import_csv file.
         A training module is used because it is conveniently placed in the Deputy UI for Employee's.
@@ -543,9 +547,10 @@ class College(Deputy):
         added_count = 0
         for in_row in csv_reader:
             # parse record but discard any messages
-            (messages, parsed_row) = self.parse_student_record(in_row)
+            (row_messages, parsed_row) = self.parse_student_record(in_row)
             if parsed_row is None:
                 continue
+            messages.extend(row_messages)
 
             email = parsed_row['email']
             name = '{0} {1}'.format(parsed_row['first_name'], parsed_row['last_name'])
@@ -572,11 +577,14 @@ class College(Deputy):
                     continue
                 else:
                     # remove incorrect year
-                    api_resp = college.api('resource/TrainingRecord/{0}'.format(student_years[employee_id][1]), method='DELETE')
-                    messages.append('Deleted old year: {0}'.format(api_resp))
+                    if test:
+                        messages.append(f'[test] Deleted old year for {name} ({employee_id})')
+                    else:
+                        api_resp = college.api('resource/TrainingRecord/{0}'.format(student_years[employee_id][1]), method='DELETE')
 
             training_module = years[year]
-            messages.append('Student {0} ({1}) is in {2}'.format(name, employee_id, year))
+            if test:
+                messages.append(f'[test] Student {name} ({employee_id}) is in {year}')
 
             # Add training module Years1/2/3/1NR for each student
             # TODO FIX the date...
@@ -586,7 +594,8 @@ class College(Deputy):
                'TrainingDate': datetime.datetime.now().isoformat(),
                'Active': True
             }
-            api_resp = self.api('resource/TrainingRecord', method='POST', data=data)
+            if not test:
+                api_resp = self.api('resource/TrainingRecord', method='POST', data=data)
             added_count += 1
 
         messages.append('Processed {0} students.'.format(count))
@@ -596,7 +605,7 @@ class College(Deputy):
         return messages
 
 
-    def delete_users(self, employees_by_email, student_years, csv_reader, use_csv=True, test=True):
+    def delete_users(self, employees_by_email, student_years, csv_reader, use_csv=True, test=False):
         """
         Delete (i.e. set active to false) any student who is not in import_csv.
 
@@ -637,8 +646,11 @@ class College(Deputy):
                 if student_id in student_years:
                     #print(student_id, student_name, student_years[student_id][0])
                     #print(json.dumps(student, sort_keys=True, indent=4, separators=(',', ': ')))
-                    messages.append('Deleted student: {0} {1}'.format(student_name, student_id))
-                    api_resp = college.api('resource/Employee/{0}'.format(student_id), method='POST', data={'Active': False})
+                    if test:
+                        messages.append(f'[test] Deleted student: {student_name} {student_id}')
+                    else:
+                        messages.append(f'Deleted student: {student_name} {student_id}')
+                        api_resp = college.api(f'resource/Employee/{student_id}', method='POST', data={'Active': False})
                     #messages.append('API response: {0}'.format(api_resp))
                     deleted_count += 1
 
@@ -1170,7 +1182,11 @@ if __name__ == '__main__':
         default=get_config(config, 'REPORT', 'start_date', missing=None))
     parser.add_argument('--end',            help='End date for date based resources',
         default=get_config(config, 'REPORT', 'end_date', missing=None))
+    parser.add_argument('--test',           help='Run script but don\'t perform any action (except creating deputy_csv)',  action='store_true')
     args = parser.parse_args()
+
+    if args.test:
+        print('Test mode active.')
 
     # All exceptions are fatal. API errors are displayed in the except statement.
     try:
@@ -1258,7 +1274,7 @@ if __name__ == '__main__':
             years = college.years()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.add_years_to_student_records(years, student_years, open_import_csv_reader(args))
+            messages = college.add_years_to_student_records(years, student_years, open_import_csv_reader(args), test=args.test)
             p.text('\n'.join(messages))
 
 
@@ -1268,7 +1284,7 @@ if __name__ == '__main__':
             students = college.employee_by_email()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.delete_users(students, student_years, open_import_csv_reader(args), use_csv=True)
+            messages = college.delete_users(students, student_years, open_import_csv_reader(args), use_csv=True, test=args.test)
             # ToDo: fix KeyError: "'EmergencyAddress'" in the line below @line 261
             # ToDo: fix KeyError: "'PostalAddress'"
             # Todo: fix KeyError: "'Id'"
@@ -1281,7 +1297,7 @@ if __name__ == '__main__':
             students = college.employee_by_email()
             p.text('Fetching training records (for year)...')
             student_years = college.student_years()
-            messages = college.delete_users(students, student_years, open_import_csv_reader(args), use_csv=False)
+            messages = college.delete_users(students, student_years, open_import_csv_reader(args), use_csv=False, test=args.test)
             p.text('\n'.join(messages))
 
 
